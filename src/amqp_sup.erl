@@ -1,6 +1,6 @@
 %% Author: jldupont
 %% Created: Mar 19, 2010
-%% Description: TODO: Add description to amqp_sup
+%% Description: amqp_sup
 -module(amqp_sup).
 
 -behaviour(supervisor).
@@ -13,85 +13,81 @@
 init([]) ->
     SupFlags = {one_for_one, 10, 3600},
     Children = children(), 
+	%io:format("Children: ~p~n", [Children]),
     {ok, {SupFlags, Children}}.
 
 %%%=========================================================================
 %%%  Internal functions
 %%%=========================================================================
-get_services() ->
-    case (catch application:get_env(inets, services)) of
-	{ok, Services} ->
-	    Services;
-	_ ->
-	    []
-    end.
 
 children() ->
-    Services = get_services(),
-    HttpdServices = [Service || Service <- Services, is_httpd(Service)],
-    HttpcServices =  [Service || Service <- Services, is_httpc(Service)],
-    TftpdServices =  [Service || Service <- Services, is_tftpd(Service)],
-    [ftp_child_spec(), httpc_child_spec(HttpcServices), 
-     httpd_child_spec(HttpdServices), tftpd_child_spec(TftpdServices)].
+	[
+	 transport_spec()
+	 ,reader_spec()
+	 ,writer_spec()
+	 ,conn_spec()
+	 ].
 
-ftp_child_spec() ->
-    Name = ftp_sup,
-    StartFunc = {ftp_sup, start_link, []},
+transport_spec() ->
+	TransportServer=getpar(transport.server),
+	ConnServer=getpar(conn.server),
+	ReaderServer=getpar(transport.reader.server),
+	WriterServer=getpar(transport.writer.server),
+	
+    Name = amqp_transport,
+    StartFunc = {amqp_transport, start_link, [[TransportServer, ConnServer, ReaderServer, WriterServer]]},
     Restart = permanent, 
-    Shutdown = infinity,
-    Modules = [ftp_sup],
-    Type = supervisor,
+    Shutdown = brutal_kill,
+    Modules = [amqp_transport],
+    Type = worker,
     {Name, StartFunc, Restart, Shutdown, Type, Modules}.
 
 
-httpc_child_spec(HttpcServices0) ->
-    HttpcServices = default_profile(HttpcServices0, []),
-    Name = httpc_sup,
-    StartFunc = {httpc_sup, start_link, [HttpcServices]},
+reader_spec() ->
+	TransportServer=getpar(transport.server),
+	ConnServer=getpar(conn.server),
+	ReaderServer=getpar(transport.reader.server),
+	WriterServer=getpar(transport.writer.server),
+	
+    Name = amqp_transport_reader,
+    StartFunc = {amqp_transport_reader, start_link, [[ReaderServer, TransportServer, ConnServer, WriterServer]]},
     Restart = permanent, 
-    Shutdown = infinity,
-    Modules = [httpc_sup],
-    Type = supervisor,
+    Shutdown = brutal_kill,
+    Modules = [amqp_transport_reader],
+    Type = worker,
     {Name, StartFunc, Restart, Shutdown, Type, Modules}.
 
-httpd_child_spec(HttpdServices) ->
-    Name = httpd_sup,
-    StartFunc = {httpd_sup, start_link, [HttpdServices]},
+
+writer_spec() ->
+	TransportServer=getpar(transport.server),
+	WriterServer=getpar(transport.writer.server),
+	
+    Name = amqp_transport_writer,
+    StartFunc = {amqp_transport_writer, start_link, [[WriterServer, TransportServer]]},
     Restart = permanent, 
-    Shutdown = infinity,
-    Modules = [httpd_sup],
-    Type = supervisor,
+    Shutdown = brutal_kill,
+    Modules = [amqp_transport_writer],
+    Type = worker,
     {Name, StartFunc, Restart, Shutdown, Type, Modules}.
 
-tftpd_child_spec(TftpServices) ->
-    Name = tftp_sup,
-    StartFunc = {tftp_sup, start_link, [TftpServices]},
+conn_spec() ->
+	TransportServer=getpar(transport.server),
+	WriterServer=getpar(transport.writer.server),
+	ConnServer=getpar(conn.server),
+	
+    Name = amqp_conn,
+    StartFunc = {amqp_conn, start_link, [[ConnServer, TransportServer, WriterServer]]},
     Restart = permanent, 
-    Shutdown = infinity,
-    Modules = [tftp_sup],
-    Type = supervisor,
+    Shutdown = brutal_kill,
+    Modules = [amqp_conn],
+    Type = worker,
     {Name, StartFunc, Restart, Shutdown, Type, Modules}.
 
-is_httpd({httpd, _}) ->
-    true;
-is_httpd({httpd, _, _}) ->
-    true;
-is_httpd(_) ->
-    false.
-
-is_httpc({httpc, _}) ->
-    true;
-is_httpc(_) ->
-    false.
-
-is_tftpd({tftpd, _}) ->
-    true;
-is_tftpd(_) ->
-    false.
-
-default_profile([], Acc) ->
-    [{httpc, {default, only_session_cookies}} | Acc];
-default_profile([{httpc, {default, _}} | _] = Profiles, Acc) ->
-    Profiles ++ Acc;
-default_profile([Profile | Profiles], Acc) ->
-    default_profile(Profiles, [Profile | Acc]).
+getpar(Param) ->
+	case application:get_env(Param) of
+		{ok, Value} -> 
+			Value;
+		_ -> 
+			erlang:error({error, {missing.app.parameter, Param}})
+	end.
+			

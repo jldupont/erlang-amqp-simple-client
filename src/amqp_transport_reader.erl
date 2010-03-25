@@ -1,39 +1,20 @@
-%%% -------------------------------------------------------------------
-%%% Author  : jldupont
-%%% Description : Module responsible of the "Transport" layer
-%%%					to the AMQP broker.  The transport protocol is 
-%%%					TCP over IP. 
-%%%				The protocol framing is also handled here. 
-%%%
-%%% Transport states:  
-%%%		wait.open  -> no transport established yet - waiting for socket parameters
-%%%		opened     -> connection opened, sending start "protocol header"
-%%%     wait_start -> wait for 'connection.start' from broker
-%%%		open       -> transport is established and available
-%%%		pending    -> transport is pending (waiting for open)
-%%%
-%%%
-%%% Events:
-%%%		OOS (Out Of Sync)
-%%%		Remote Close
-%%%
-%%%
-%%%	API:
-%%%		'open'  : opens the TCP/IP transport connection & sends the initial protocol-header (4.2.2)
-%%%		'close' : close the
-%%%
-%%%
-%%%
-%%%
-%%%
-%%% Created : Mar 19, 2010
-%%% -------------------------------------------------------------------
--module(amqp_transport).
+%% Author: jldupont
+%% Created: Mar 23, 2010
+%% Description: amqp_transport_reader
+%%
+%% States:
+%%	wait.init   : waiting for initialization
+%%	wait.header : waiting for header
+%%	wait.payload : waiting for payload
+%%
+%%
+-module(amqp_transport_reader).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
+-include("amqp.hrl").
 
 %% --------------------------------------------------------------------
 %% External exports
@@ -42,20 +23,14 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate=wait.open, 
-				client=none,
-				socket=none, address=none, port=none,
-				options=[],
-				server=none, cserver=none, rserver=none, wserver=none
-				}).
+-record(state, {cstate=wait.init, socket=none, host=none, port=none,
+				server=none, tserver=none, cserver=none, wserver=none}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
-start_link([Server, ConnServer, ReaderServer, WriterServer]) ->
-	io:format("* Transport starting~n"),
-	gen_server:start_link({local, Server}, ?MODULE, [Server, ConnServer, ReaderServer, WriterServer], []).
-
+start_link([Server, TransportServer, ConnServer, WriterServer]) ->
+	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, ConnServer, WriterServer], []).
 
 %% ====================================================================
 %% Server functions
@@ -69,9 +44,9 @@ start_link([Server, ConnServer, ReaderServer, WriterServer]) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([Server, ConnServer, ReaderServer, WriterServer]) ->
-    {ok, #state{cstate=wait.open, 
-				server=Server, cserver=ConnServer, rserver=ReaderServer, wserver=WriterServer}}.
+init([Server, TransportServer, ConnServer, WriterServer]) ->
+    {ok, #state{cstate=wait.init,
+				server=Server, tserver=TransportServer, cserver=ConnServer, wserver=WriterServer}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -94,48 +69,52 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_cast({From, socket, Socket}, State=#state{cstate=wait.init}) ->
+	gen_server:cast(self(), {From, do.wait.header}),
+    {noreply, State#state{cstate=wait.header, socket=Socket}};
 
-%% Default address:port
-handle_cast({From=_Client, open, [], Opts}, State=#state{cstate=wait.open}) ->
-	{ok, DefaultAddress}=application:get_env(default.address),
-	{ok, DefaultPort}=application:get_env(default.port),
-	gen_server:cast(self(), {From, open, [DefaultAddress, DefaultPort], Opts}),
-	{noreply, State};
-	
-
-handle_cast({From=Client, open, [Address, Port], Opts}, State=#state{cstate=wait.open}) ->
-	Rserver=State#state.rserver,
-	Wserver=State#state.wserver,
-	{ok, TcpOptions}=application:get_env(amqp.tcp.options),
-	case gen_tcp:connect(Address, Port, TcpOptions) of
-		{ok, Socket} ->
-			State2=State#state{cstate=opened, socket=Socket, options=Opts, client=Client
-							  ,address=Address, port=Port},
-			gen_server:cast(Rserver, {self(), socket, Socket}),
-			gen_server:cast(Wserver, {self(), socket, Socket});
-		{error, Reason} ->
+handle_cast({From, do.wait.header}, State) ->
+	Socket=State#state.socket,
+	case gen_tcp:recv(Socket, ?FRAME_HEADER_LENGTH, ?TIMEOUT_WAIT_HEADER) of
+		{ok, FrameHeader} ->
+			io:format("> reader, header: ~p~n", [FrameHeader]),
+			State2=State#state{cstate=wait.payload},
+			gen_server:cast(self(), {From, do.wait.payload, FrameHeader});
+		{error, timeout} ->
+			io:format("> reader, timeout~n"),
 			State2=State,
-			From ! {error, {'transport.open', Reason}}
+			gen_server:cast(self(), {From, do.wait.header});
+		{error, Reason} ->
+			io:format("> reader, error, reason: ~p~n", [Reason]),
+			State2=State#state{cstate=wait.init},
+			Tserver=State#state.tserver,
+			gen_server:cast(Tserver, {error, {'transport.reader.wait.header', Reason}})
 	end,
     {noreply, State2};
 
-handle_cast({From, open, _Host, _Port}, State) ->
-	From ! {error, 'transport.already.active'},
-    {noreply, State};
-
-
-handle_cast({error, {Error, Reason}}, State) ->
-	Client=State#state.client,
-	Client ! {error, {Error, Reason}},
-	
+%% Sending PROTOCOL HEADER
+handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State) ->
+	io:format("> reader, wait.payload, type:~p  size:~p~n", [Type, Size]),
 	Socket=State#state.socket,
-	gen_tcp:close(Socket),
-	{noreply, State#state{socket=none, cstate=wait.open}};
+	case gen_tcp:recv(Socket, Size+1, ?TIMEOUT_WAIT_PAYLOAD) of
+		{ok, FramePayload} ->
+			State2=State#state{cstate=wait.header},
+			ConnServer=State#state.cserver,
+			%% Send-off complete AMQP protocol packet to Connection Agent
+			gen_server:cast(ConnServer, {amqp.packet, Type, Channel, Size, FramePayload}),
+			gen_server:cast(self(), {From, do.wait.header});
+		{error, timeout} ->
+			State2=State#state{cstate=wait.init},
+			Tserver=State#state.tserver,
+			gen_server:cast(Tserver, {error, {'transport.reader.wait.payload', timeout}}),			
+			io:format("> reader, wait.payload timeout!");
+		{error, Reason} ->
+			State2=State#state{cstate=wait.init},
+			Tserver=State#state.tserver,
+			gen_server:cast(Tserver, {error, {'transport.reader.wait.payload', Reason}})
+	end,
+	{noreply, State2}.
 
-
-handle_cast(Msg, State) ->
-	io:format("! Transport state: ~p  msg: ~p", [State#state.cstate, Msg]),
-	{noreply, State}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
@@ -144,12 +123,8 @@ handle_cast(Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_info({From, open, Params, Options}, State) ->
-	gen_server:cast(self(), {From, open, Params, Options}),
-    {noreply, State};
-
 handle_info(Info, State) ->
-	io:format("Info: ~p *** State: ~p", [Info, State]),
+	io:format(">reader: Info: ~p *** State: ~p~n", [Info, State]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

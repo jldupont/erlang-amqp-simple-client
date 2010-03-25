@@ -1,34 +1,10 @@
 %%% -------------------------------------------------------------------
 %%% Author  : jldupont
-%%% Description : Module responsible of the "Transport" layer
-%%%					to the AMQP broker.  The transport protocol is 
-%%%					TCP over IP. 
-%%%				The protocol framing is also handled here. 
+%%% Description :
 %%%
-%%% Transport states:  
-%%%		wait.open  -> no transport established yet - waiting for socket parameters
-%%%		opened     -> connection opened, sending start "protocol header"
-%%%     wait_start -> wait for 'connection.start' from broker
-%%%		open       -> transport is established and available
-%%%		pending    -> transport is pending (waiting for open)
-%%%
-%%%
-%%% Events:
-%%%		OOS (Out Of Sync)
-%%%		Remote Close
-%%%
-%%%
-%%%	API:
-%%%		'open'  : opens the TCP/IP transport connection & sends the initial protocol-header (4.2.2)
-%%%		'close' : close the
-%%%
-%%%
-%%%
-%%%
-%%%
-%%% Created : Mar 19, 2010
+%%% Created : Mar 24, 2010
 %%% -------------------------------------------------------------------
--module(amqp_transport).
+-module(amqp_tests).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
@@ -37,24 +13,16 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/1]).
+-export([]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate=wait.open, 
-				client=none,
-				socket=none, address=none, port=none,
-				options=[],
-				server=none, cserver=none, rserver=none, wserver=none
-				}).
+-record(state, {}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
-start_link([Server, ConnServer, ReaderServer, WriterServer]) ->
-	io:format("* Transport starting~n"),
-	gen_server:start_link({local, Server}, ?MODULE, [Server, ConnServer, ReaderServer, WriterServer], []).
 
 
 %% ====================================================================
@@ -69,9 +37,8 @@ start_link([Server, ConnServer, ReaderServer, WriterServer]) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([Server, ConnServer, ReaderServer, WriterServer]) ->
-    {ok, #state{cstate=wait.open, 
-				server=Server, cserver=ConnServer, rserver=ReaderServer, wserver=WriterServer}}.
+init([]) ->
+    {ok, #state{}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -83,7 +50,7 @@ init([Server, ConnServer, ReaderServer, WriterServer]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call(_Request, _From, State) ->
+handle_call(Request, From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
@@ -94,48 +61,8 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-
-%% Default address:port
-handle_cast({From=_Client, open, [], Opts}, State=#state{cstate=wait.open}) ->
-	{ok, DefaultAddress}=application:get_env(default.address),
-	{ok, DefaultPort}=application:get_env(default.port),
-	gen_server:cast(self(), {From, open, [DefaultAddress, DefaultPort], Opts}),
-	{noreply, State};
-	
-
-handle_cast({From=Client, open, [Address, Port], Opts}, State=#state{cstate=wait.open}) ->
-	Rserver=State#state.rserver,
-	Wserver=State#state.wserver,
-	{ok, TcpOptions}=application:get_env(amqp.tcp.options),
-	case gen_tcp:connect(Address, Port, TcpOptions) of
-		{ok, Socket} ->
-			State2=State#state{cstate=opened, socket=Socket, options=Opts, client=Client
-							  ,address=Address, port=Port},
-			gen_server:cast(Rserver, {self(), socket, Socket}),
-			gen_server:cast(Wserver, {self(), socket, Socket});
-		{error, Reason} ->
-			State2=State,
-			From ! {error, {'transport.open', Reason}}
-	end,
-    {noreply, State2};
-
-handle_cast({From, open, _Host, _Port}, State) ->
-	From ! {error, 'transport.already.active'},
-    {noreply, State};
-
-
-handle_cast({error, {Error, Reason}}, State) ->
-	Client=State#state.client,
-	Client ! {error, {Error, Reason}},
-	
-	Socket=State#state.socket,
-	gen_tcp:close(Socket),
-	{noreply, State#state{socket=none, cstate=wait.open}};
-
-
 handle_cast(Msg, State) ->
-	io:format("! Transport state: ~p  msg: ~p", [State#state.cstate, Msg]),
-	{noreply, State}.
+    {noreply, State}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
@@ -144,12 +71,7 @@ handle_cast(Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_info({From, open, Params, Options}, State) ->
-	gen_server:cast(self(), {From, open, Params, Options}),
-    {noreply, State};
-
 handle_info(Info, State) ->
-	io:format("Info: ~p *** State: ~p", [Info, State]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -157,7 +79,7 @@ handle_info(Info, State) ->
 %% Description: Shutdown the server
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
     ok.
 
 %% --------------------------------------------------------------------
@@ -165,7 +87,7 @@ terminate(_Reason, _State) ->
 %% Purpose: Convert process state when code is changed
 %% Returns: {ok, NewState}
 %% --------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
+code_change(OldVsn, State, Extra) ->
     {ok, State}.
 
 %% --------------------------------------------------------------------

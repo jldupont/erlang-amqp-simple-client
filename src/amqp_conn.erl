@@ -21,7 +21,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -31,7 +31,8 @@
 %% ====================================================================
 %% External functions
 %% ====================================================================
-
+start_link([Server, TransportServer, WriterServer]) ->
+	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, WriterServer], []).
 
 %% ====================================================================
 %% Server functions
@@ -80,6 +81,7 @@ handle_cast(Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(Info, State) ->
+	io:format(">conn: Info: ~p *** State: ~p~n", [Info, State]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

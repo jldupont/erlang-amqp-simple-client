@@ -1,18 +1,27 @@
 %%
 %% @author: Jean-Lou Dupont
 %%
-{application,amqp,
+{application, amqp,
  [{description,"erlang-amqp-simple-client"},
   {vsn,"1.0"},
   {modules,[
-            amqp,
-            amqp_sup,
             amqp_app,
-
+            amqp_sup,
+            amqp_transport,
+            amqp_transport_reader,
+            amqp_transport_writer
         ]},
   {env, [
+  			{default.address,          "127.0.0.1" }
+  			,{default.port,            5672}
+  			,{amqp.tcp.options,        [binary, {packet, 0}, {active,false}, {nodelay, true}]}
+  			,{transport.server,        amqp.transport.server}
+  			,{transport.reader.server, amqp.transport.reader.server}
+  			,{transport.writer.server, amqp.transport.writer.server}
+  			,{conn.server,             amqp.conn.server}
   
   		]},
-  {registered,[amqp_sup, httpc_manager]},
+  {registered,[amqp_sup]},
   {applications,[kernel,stdlib]},
-  {mod,{amqp_app,[]}}]}.
+  {mod,{amqp_app,[]}}
+ ]}.
