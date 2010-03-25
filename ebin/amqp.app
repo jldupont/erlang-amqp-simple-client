@@ -9,11 +9,14 @@
             amqp_sup,
             amqp_transport,
             amqp_transport_reader,
-            amqp_transport_writer
+            amqp_transport_writer,
+            amqp_conn
         ]},
   {env, [
   			{default.address,          "127.0.0.1" }
   			,{default.port,            5672}
+  			,{default.user,            "guest"}
+  			,{default.password,        "guest"}
   			,{amqp.tcp.options,        [binary, {packet, 0}, {active,false}, {nodelay, true}]}
   			,{transport.server,        amqp.transport.server}
   			,{transport.reader.server, amqp.transport.reader.server}

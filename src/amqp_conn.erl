@@ -18,6 +18,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
+-include("amqp.hrl").
 
 %% --------------------------------------------------------------------
 %% External exports
@@ -26,7 +27,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, {cstate=none, server, tserver, wserver}).
 
 %% ====================================================================
 %% External functions
@@ -46,8 +47,8 @@ start_link([Server, TransportServer, WriterServer]) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([]) ->
-    {ok, #state{}}.
+init([Server, TransportServer, WriterServer]) ->
+    {ok, #state{server=Server, tserver=TransportServer, wserver=WriterServer}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -70,7 +71,12 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast(Msg, State) ->
+handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
+	Method=amqp_proto:imap(ClassId, MethodId),
+	handle_method(State, Channel, Size, Method, Rest);
+
+handle_cast({amqp.packet, Type, Channel, Size, FramePayload}, State) ->
+	io:format("> conn, frame, type:~p  payload:~p ~n", [Type, FramePayload]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -103,4 +109,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
+handle_method(State, Channel, Size, 'connection.start', Payload) ->
+	ok;
 
+handle_method(State, Channel, Size, Method, Payload) ->
+	io:format("> conn, method: ~p~n", [Method]),
+	{ok, State}.
+
+	

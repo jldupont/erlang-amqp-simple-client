@@ -82,7 +82,9 @@ imap(?BASIC, 80) ->	 'basic.ack';
 imap(?BASIC, 90) ->	 'basic.reject';
 imap(?BASIC, 100) -> 'basic.recover.async';
 imap(?BASIC, 110) -> 'basic.recover';
-imap(?BASIC, 111) -> 'basic.recover.ok'.
+imap(?BASIC, 111) -> 'basic.recover.ok';
+
+imap(_, _) -> invalid.
 
 
 emap('connection.start')    -> {10, 10};
@@ -135,6 +137,8 @@ emap('basic.ack')        -> {60, 80};
 emap('basic.reject')        -> {60, 90};
 emap('basic.recover.async') -> {60, 100};
 emap('basic.recover')       -> {60, 110};
-emap('basic.recover.ok')    -> {60, 111}.
+emap('basic.recover.ok')    -> {60, 111};
+
+emap(_) -> invalid.
 
 

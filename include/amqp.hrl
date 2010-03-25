@@ -18,4 +18,5 @@
 -define(TIMEOUT_WAIT_PAYLOAD, 1000).
 -define(FRAME_HEADER_LENGTH,  7).
 
+-define(TYPE_METHOD, 1).
 
