@@ -109,8 +109,10 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-handle_method(State, Channel, Size, 'connection.start', Payload) ->
-	ok;
+handle_method(State, Channel, Size, 'connection.start'=Method, Payload) ->
+	Result=amqp_proto:decode_method(Method, Payload),
+  	io:format("> Conn, method: ~p  result: ~p~n", [Method, Result]),
+	{ok, State};
 
 handle_method(State, Channel, Size, Method, Payload) ->
 	io:format("> conn, method: ~p~n", [Method]),

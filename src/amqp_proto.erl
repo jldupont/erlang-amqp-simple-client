@@ -27,7 +27,9 @@
 %%
 %% Exported Functions
 %%
--export([imap/2, emap/1]).
+-export([imap/2, emap/1
+		,decode_method/2
+		]).
 
 %%
 %% API Functions
@@ -141,4 +143,119 @@ emap('basic.recover.ok')    -> {60, 111};
 
 emap(_) -> invalid.
 
+
+decode_method('connection.start', <<VersionMajor:8, VersionMinor:8, Rest/binary>>) ->
+	io:format("VersionMajor: ~p, VersionMinor: ~p~n",[VersionMajor, VersionMinor]),
+	[{table, ServerPropertiesTable}, {rest, RestData}]=extract_table(Rest),
+	ServerProperties=table_decode(ServerPropertiesTable),
+	[Mechanisms, RestData2] = decode_prim(longstr, RestData),
+	[Locales, _RestData3] = decode_prim(longstr, RestData2),
+	[{version.major, VersionMajor},
+	 {version.minor, VersionMinor},
+	 {server.properties, ServerProperties},
+	 {mechanisms, Mechanisms},
+	 {locales, Locales} 
+	 ];
+
+decode_method(_, _) ->
+	undefined.
+
+
+%%
+%% Decode Compounds
+%%
+
+%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  Table Encoding:
+%%
+%%   <<Table Length, [{name, type, value}, ...]
+%%
+%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%% Extracts a "table" from a binary blob
+%% 
+extract_table(<<Tlen:32, Data/binary>>) ->
+	io:format("> extract_table, tlen: ~p~n", [Tlen]),
+	<<Table:Tlen/binary, Rest/binary>> = Data,
+	[{table, Table}, {rest, Rest}].
+
+
+table_decode(TableData) ->
+	table_decode(TableData, []).
+
+%% Done
+table_decode(<<>>, Acc) ->
+	{table, Acc};
+
+table_decode(Data, Acc) ->
+	[{_, _, Name}, TypeAndRestData]=decode_prim(shortstr, Data),
+	[{_, _, Type}, ValueAndRestData]=decode_prim(octet, TypeAndRestData),
+	io:format("> table_decode, name:~p type:~p~n", [Name, Type]),
+	
+	[{Ptype, _Size, Value}, RestData]=table_decode_entry(Type, ValueAndRestData),
+	Result=case Ptype of
+		table ->
+			table_decode(Value);
+		_ ->
+			{Ptype, Name, Value}
+	end,
+	table_decode(RestData, Acc++[Result]).
+		
+
+
+
+
+table_decode_entry($F, ValueAndRestData) ->
+	<<Tlen:32, Rest/binary>> = ValueAndRestData,
+	<<TableData:Tlen/binary, RestData/binary>> = Rest,
+	[{table, Tlen, TableData}, RestData];
+
+table_decode_entry($T, ValueAndRestData) ->
+	decode_prim(timestamp, ValueAndRestData);
+
+table_decode_entry($D, ValueAndRestData) ->
+	decode_prim(decimal, ValueAndRestData);
+
+table_decode_entry($I, ValueAndRestData) ->
+	decode_prim(long, ValueAndRestData);
+
+table_decode_entry($S, ValueAndRestData) ->
+	decode_prim(longstr, ValueAndRestData);
+
+table_decode_entry(_, Data) ->
+	[undefined, Data].
+
+
+%%
+%% Decode Primitives
+%%
+decode_prim(decimal, <<Places:8, Long:32, Rest/binary>>) ->
+	[{decimal, 5, {Places, Long}}, Rest];
+
+decode_prim(shortstr, <<Len:8, StrAndRest/binary>>) ->
+	<<Str:Len/binary, Rest/binary>> = StrAndRest,
+	[{shortstr, Len, Str}, Rest];
+
+decode_prim(longstr, <<Len:32, StrAndRest/binary>>) ->
+	<<Str:Len/binary, Rest/binary>> = StrAndRest,
+	[{longstr, Len, Str}, Rest];
+
+decode_prim(timestamp, <<Ts:64, Rest/binary>>) ->
+	[{timestamp, 8, Ts}, Rest];
+
+decode_prim(octet, <<Octet:8, Rest/binary>>) ->
+	[{octet, 1, Octet}, Rest];
+
+decode_prim(short, <<Short:16, Rest/binary>>) ->
+	[{short, 2, Short}, Rest];
+
+decode_prim(long, <<Long:32, Rest/binary>>) ->
+	[{long, 4, Long}, Rest];
+
+decode_prim(longlong, <<LongLong:64, Rest/binary>>) ->
+	[{longlong, 8, LongLong}, Rest];
+
+decode_prim(_, Data) ->
+	[{undefined, undefined, undefined}, Data].
 
