@@ -69,33 +69,49 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({From, socket, Socket}, State=#state{cstate=wait.init}) ->
+
+%% Grab socket parameter regardless of current state
+%%
+%%
+handle_cast({From, socket, Socket}, State) ->
 	gen_server:cast(self(), {From, do.wait.header}),
     {noreply, State#state{cstate=wait.header, socket=Socket}};
 
-handle_cast({From, do.wait.header}, State) ->
+%% Wait for the Header part of a protocol unit
+%%
+%%  Upon success, proceed to wait.payload
+%%  Upon timeout, retry
+%%  Upon network error, send event to Transport.Server
+%%
+handle_cast({From, do.wait.header}, State=#state{cstate=wait.header}) ->
 	Socket=State#state.socket,
 	case gen_tcp:recv(Socket, ?FRAME_HEADER_LENGTH, ?TIMEOUT_WAIT_HEADER) of
 		{ok, FrameHeader} ->
-			io:format("> reader, header: ~p~n", [FrameHeader]),
+			%io:format("> reader, header: ~p~n", [FrameHeader]),
 			State2=State#state{cstate=wait.payload},
 			gen_server:cast(self(), {From, do.wait.payload, FrameHeader});
 		{error, timeout} ->
-			io:format("> reader, timeout~n"),
+			%io:format("> reader, timeout~n"),
 			State2=State,
 			gen_server:cast(self(), {From, do.wait.header});
 		{error, Reason} ->
-			io:format("> reader, error, reason: ~p~n", [Reason]),
+			%io:format("> reader, error, reason: ~p~n", [Reason]),
 			State2=State#state{cstate=wait.init},
 			Tserver=State#state.tserver,
 			gen_server:cast(Tserver, {error, {'transport.reader.wait.header', Reason}})
 	end,
     {noreply, State2};
 
-%% Sending PROTOCOL HEADER
-handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State) ->
+%% Wait for Payload part of protocol unit
+%%
+%%  Upon success, transfer whole frame to Connection.Server & return to wait.header
+%%	Upon timeout, signal error to Transport.Server
+%%	Upon network error, signal error to Transport.Server
+%%
+handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State=#state{cstate=wait.payload}) ->
 	io:format("> reader, wait.payload, type:~p  size:~p~n", [Type, Size]),
 	Socket=State#state.socket,
+	
 	case gen_tcp:recv(Socket, Size+1, ?TIMEOUT_WAIT_PAYLOAD) of
 		{ok, FramePayload} ->
 			State2=State#state{cstate=wait.header},
@@ -103,17 +119,18 @@ handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State) ->
 			%% Send-off complete AMQP protocol packet to Connection Agent
 			gen_server:cast(ConnServer, {amqp.packet, Type, Channel, Size, FramePayload}),
 			gen_server:cast(self(), {From, do.wait.header});
-		{error, timeout} ->
-			State2=State#state{cstate=wait.init},
-			Tserver=State#state.tserver,
-			gen_server:cast(Tserver, {error, {'transport.reader.wait.payload', timeout}}),			
-			io:format("> reader, wait.payload timeout!");
+		
+			%% Errors should be few in between... setup Tserver just then 
 		{error, Reason} ->
 			State2=State#state{cstate=wait.init},
 			Tserver=State#state.tserver,
 			gen_server:cast(Tserver, {error, {'transport.reader.wait.payload', Reason}})
 	end,
-	{noreply, State2}.
+	{noreply, State2};
+
+%% Discard message from queue...
+handle_cast(_Msg, State) ->
+	{noreply, State}.
 
 
 %% --------------------------------------------------------------------

@@ -71,6 +71,12 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+
+%% From Transport.Server
+%%
+handle_cast({error, connection.closed}, State) ->
+	ok;
+
 handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
 	NewState=handle_method(State, Channel, Size, Method, Rest),

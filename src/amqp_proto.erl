@@ -370,7 +370,7 @@ decode_prim(_, Data) ->
 	[{undefined, undefined, undefined}, Data].
 
 
-decode_bit(Byte) ->
+decode_bit(Byte) when Byte =< 255 ->
 	[{bit, Byte band 16#01}, Byte bsr 1].
 
 
@@ -400,10 +400,12 @@ encode_prim(octet, Octet) ->
 	<<Octet:8/binary>>.
 
 
-encode_bit(Byte, true) ->
-	(Byte bsl 1) bor 1;
+encode_bit(Byte, Pos, true) when Byte =< 255, Pos =< 7 ->
+	SetBit=16#01 bsl Pos,
+	Byte bor SetBit;
 
-encode_bit(Byte, _) ->
-	Byte bsl 1.
+encode_bit(Byte, Pos, _) when Byte =< 255, Pos =< 7 ->
+	ClearBit= bnot (16#01 bsl Pos),
+	Byte band ClearBit.
 
 

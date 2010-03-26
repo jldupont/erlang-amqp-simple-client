@@ -1,14 +1,10 @@
 %%% -------------------------------------------------------------------
 %%% Author  : jldupont
-%%% Description :
+%%% Description :  Frame and send protocol units down the TCP socket
 %%%
 %%% States:
 %%%		wait.socket : waiting for socket parameters
-%%%
-%%%
-%%%
-%%%
-%%%
+%%%     wait.packet : waiting for packet to frame and transmit
 %%%
 %%%
 %%% Created : Mar 23, 2010
@@ -34,7 +30,6 @@
 %% External functions
 %% ====================================================================
 start_link([Server, TransportServer]) ->
-	io:format("* Transport Writer starting~n"),
 	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer], []).
 
 %% ====================================================================
@@ -74,20 +69,41 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({From, socket, Socket}, State) ->
+
+%% Message from Transport.Server
+%%  
+%% Upon Success/Failure, signal back to Transport.Server
+%%
+handle_cast({_From, socket, Socket}, State) ->
+	Tserver=State#state.tserver,
 	case gen_tcp:send(Socket, ?PROTOCOL_HEADER) of
 		ok ->
-			From ! {ok, 'transport.writer.send.protocol.start.header'},
-			State2=State#state{cstate=wait.frame};
+			State2=State#state{cstate=wait.packet, socket=Socket},
+			gen_server:cast(Tserver, {ok, 'transport.writer.send.protocol.start.header'});
 		{error, Reason} ->
-			State2=State#state{cstate=wait.socket},
+			State2=State#state{cstate=wait.socket, socket=none},
 			gen_tcp:close(Socket),
-			From ! {error, {'transport.writer.send.header', Reason}}
+			gen_server:cast(Tserver, {error, {'transport.writer.send.header', Reason}})
+	end,
+	{noreply, State2};
+
+handle_cast({_From, packet, Type, Channel, Payload}, State=#state{cstate=wait.packet}) ->
+	Socket=State#state.socket,
+	Len=erlang:length(Payload),
+	Frame= <<Type:8, Channel:16, Len:32, Payload, 16#ce:8>>,
+	case gen_tcp:send(Socket, Frame) of
+		ok ->
+			State2=State;
+		{error, Reason} ->
+			gen_tcp:close(Socket),
+			State2=State#state{socket=none, cstate=wait.socket},
+			Tserver=State#state.tserver,
+			gen_server:cast(Tserver, {error, {transport.writer.send, Reason}})
 	end,
 	{noreply, State2};
 
 handle_cast(Msg, State) ->
-	io:format("! Writer state: ~p  msg: ~p", [State#state.cstate, Msg]),
+	io:format("! Writer, invalid 'cast', state: ~p  msg: ~p", [State#state.cstate, Msg]),
 	{noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -115,8 +131,4 @@ terminate(_Reason, _State) ->
 %% --------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-%% --------------------------------------------------------------------
-%%% Internal functions
-%% --------------------------------------------------------------------
 
