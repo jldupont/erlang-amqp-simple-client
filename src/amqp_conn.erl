@@ -72,9 +72,19 @@ handle_call(_Request, _From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 
-%% From Transport.Server
+%% Success in opening Transport socket
 %%
-handle_cast({error, connection.closed}, State) ->
+handle_cast({ok, transport.open}, State) ->
+	ok;
+
+%% Success in sending initial Protocol Header to AMQP server
+%%
+handle_cast({ok, transport.ready}, State) ->
+	ok;
+
+%% Error in opening Transport socket
+%%
+handle_cast({error, transport.closed}, State) ->
 	ok;
 
 handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
