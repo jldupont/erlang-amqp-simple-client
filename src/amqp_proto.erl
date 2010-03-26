@@ -3,6 +3,8 @@
 %% Description: amqp_proto
 -module(amqp_proto).
 
+-compile(export_all).
+
 %%
 %% Definitions
 %%
@@ -145,7 +147,6 @@ emap(_) -> invalid.
 
 
 decode_method('connection.start', <<VersionMajor:8, VersionMinor:8, Rest/binary>>) ->
-	io:format("VersionMajor: ~p, VersionMinor: ~p~n",[VersionMajor, VersionMinor]),
 	[{table, ServerPropertiesTable}, {rest, RestData}]=extract_table(Rest),
 	ServerProperties=table_decode(ServerPropertiesTable),
 	[Mechanisms, RestData2] = decode_prim(longstr, RestData),
@@ -157,13 +158,123 @@ decode_method('connection.start', <<VersionMajor:8, VersionMinor:8, Rest/binary>
 	 {locales, Locales} 
 	 ];
 
+decode_method('connection.secure', Payload) ->
+	Challenge=decode_prim(longstr, Payload),
+	[{longstr, _Len, Str}, _Rest] = Challenge,
+	[{challenge, Str}];
+
+decode_method('connection.tune', Payload) ->
+	[{short, _, ChannelMax}, Rest]=decode_prim(short, Payload),
+	[{long,  _, FrameMax},   Rest2] = Rest,
+	[{short, _, Heartbeat},  _Rest3] = Rest2,
+	[{channel.max, ChannelMax}, {frame.max, FrameMax}, {heartbeat, Heartbeat}];
+
+decode_method('connection.open', Payload) ->
+	[{shortstr, _, Path}, _Rest]=decode_prim(shortstr, Payload),
+	[{path, Path}];
+
+decode_method('connection.close', Payload) ->
+	[{short,    _, Code}, Rest]=decode_prim(short, Payload),
+	[{shortstr, _, Text}, Rest2]=decode_prim(shortstr, Rest),
+	[{short,    _, Clid}, Rest3]=decode_prim(short, Rest2),
+	[{short,    _, Mlid}, _Rest4]=decode_prim(short, Rest3),
+	[{reply.code, Code}, {reply.text, Text}, {class.id, Clid}, {method.id, Mlid}];
+
+decode_method('connection.close.ok', _Payload) ->
+	[];
+
+decode_method('channel.flow', Payload) ->
+	[{octet, _, Active}, _Rest]=decode_prim(octet, Payload),
+	[{active, Active}];
+
+decode_method('channel.flow.ok', Payload) ->
+	[{octet, _, Active}, _Rest]=decode_prim(octet, Payload),
+	[{active, Active}];
+
+decode_method('channel.close', Payload) ->
+	[{short,    _, Code}, Rest]=decode_prim(short, Payload),
+	[{shortstr, _, Text}, Rest2]=decode_prim(shortstr, Rest),
+	[{short,    _, Clid}, Rest3]=decode_prim(short, Rest2),
+	[{short,    _, Mlid}, _Rest4]=decode_prim(short, Rest3),
+	[{reply.code, Code}, {reply.text, Text}, {class.id, Clid}, {method.id, Mlid}];
+
+decode_method('channel.close.ok', _Payload) ->
+	[];
+
+decode_method('exchange.declare.ok', _Payload) ->
+	[];
+
+decode_method('exchange.delete.ok', _Payload) ->
+	[];
+
+decode_method('queue.declare.ok', Payload) ->
+	[{shortstr, _, Name},   Rest]=decode_prim(shortstr, Payload),
+	[{long,     _, MCount}, Rest2]=decode_prim(long, Rest),
+	[{long,     _, CCount}, _Rest3]=decode_prim(long, Rest2),
+	[{name, Name}, {message.count, MCount}, {consumer.count, CCount}];
+
+decode_method('queue.bind.ok', _Payload) ->
+	[];
+
+decode_method('queue.unbind.ok', _Payload) ->
+	[];
+
+decode_method('queue.purge.ok', Payload) ->
+	[{long,     _, MCount}, _Rest]=decode_prim(long, Payload),
+	[{message.count, MCount}];
+
+decode_method('queue.delete.ok', Payload) ->
+	[{long,     _, MCount}, _Rest]=decode_prim(long, Payload),
+	[{message.count, MCount}];
+
+decode_method('basic.qos.ok', _Payload) ->
+	[];
+
+decode_method('basic.consume.ok', Payload) ->
+	[{shortstr, _, Tag},   _Rest]=decode_prim(shortstr, Payload),
+	[{consumer.tag, Tag}];
+
+decode_method('basic.cancel.ok', Payload) ->
+	[{shortstr, _, Tag},   _Rest]=decode_prim(shortstr, Payload),
+	[{consumer.tag, Tag}];
+
+decode_method('basic.return', Payload) ->
+	[{short,    _, Code}, Rest]=decode_prim(short, Payload),
+	[{shortstr, _, Text}, Rest2]=decode_prim(shortstr, Rest),
+	[{shortstr, _, Exch}, Rest3]=decode_prim(shortstr, Rest2),
+	[{shortstr, _, Key}, _Rest4]=decode_prim(shortstr, Rest3),
+	[{reply.code, Code}, {reply.text, Text}, {exchange.name, Exch}, {routing.key, Key}];
+
+decode_method('basic.deliver', Payload) ->
+	[{shortstr, _, CTag},   Rest] =decode_prim(shortstr, Payload),
+	[{longlong, _, DTag},   Rest2]=decode_prim(longlong, Rest),
+	[{octet,    _, Redel},  Rest3]=decode_prim(octet, Rest2),
+	[{shortstr, _, Exch},   Rest4]=decode_prim(shortstr, Rest3),
+	[{shortstr, _, Key},   _Rest5]=decode_prim(shortstr, Rest4),
+	[{consumer.tag, CTag}, {delivery.tag, DTag}, {redelivered, Redel},
+	  {exchange.name, Exch}, {routing.key, Key}];
+	
+decode_method('basic.get.ok', Payload) ->
+	[{longlong, _, DTag},   Rest]=decode_prim(longlong, Payload),
+	[{octet,    _, Redel},  Rest2]=decode_prim(octet, Rest),
+	[{shortstr, _, Exch},   Rest3]=decode_prim(shortstr, Rest2),
+	[{shortstr, _, Key},    Rest4]=decode_prim(shortstr, Rest3),
+	[{long,     _, MCount}, _Rest5]=decode_prim(long, Rest4),
+	[{delivery.tag, DTag}, {redelivered, Redel}, {exchange.name, Exch}
+	,{routing.key, Key}, {message.count, MCount}
+	 ];
+
+decode_method('basic.get.empty', _Payload) ->
+	[];
+
+decode_method('basic.recover.ok', _Payload) ->
+	[];
+
 decode_method(_, _) ->
 	undefined.
 
 
-%%
-%% Decode Compounds
-%%
+
 
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%  Table Encoding:
@@ -176,22 +287,21 @@ decode_method(_, _) ->
 %% Extracts a "table" from a binary blob
 %% 
 extract_table(<<Tlen:32, Data/binary>>) ->
-	io:format("> extract_table, tlen: ~p~n", [Tlen]),
 	<<Table:Tlen/binary, Rest/binary>> = Data,
 	[{table, Table}, {rest, Rest}].
 
 
+%% Decodes a "table" compound data-type
+%%
 table_decode(TableData) ->
 	table_decode(TableData, []).
 
-%% Done
 table_decode(<<>>, Acc) ->
 	{table, Acc};
 
 table_decode(Data, Acc) ->
 	[{_, _, Name}, TypeAndRestData]=decode_prim(shortstr, Data),
 	[{_, _, Type}, ValueAndRestData]=decode_prim(octet, TypeAndRestData),
-	io:format("> table_decode, name:~p type:~p~n", [Name, Type]),
 	
 	[{Ptype, _Size, Value}, RestData]=table_decode_entry(Type, ValueAndRestData),
 	Result=case Ptype of
@@ -258,4 +368,42 @@ decode_prim(longlong, <<LongLong:64, Rest/binary>>) ->
 
 decode_prim(_, Data) ->
 	[{undefined, undefined, undefined}, Data].
+
+
+decode_bit(Byte) ->
+	[{bit, Byte band 16#01}, Byte bsr 1].
+
+
+%%
+%% Encode Primitives
+%%
+encode_prim(shortstr, String) ->
+	Size=erlang:length(String),
+	ByteString=erlang:list_to_binary(String),
+	<<Size:8, ByteString/binary>>;
+
+encode_prim(longstr, String) ->
+	Size=erlang:length(String),
+	ByteString=erlang:list_to_binary(String),
+	<<Size:32, ByteString/binary>>;
+
+encode_prim(longlong, LongLong) ->
+	<<LongLong:64/binary>>;
+
+encode_prim(long, Long) ->
+	<<Long:32/binary>>;
+
+encode_prim(short, Short) ->
+	<<Short:16/binary>>;
+
+encode_prim(octet, Octet) ->
+	<<Octet:8/binary>>.
+
+
+encode_bit(Byte, true) ->
+	(Byte bsl 1) bor 1;
+
+encode_bit(Byte, _) ->
+	Byte bsl 1.
+
 

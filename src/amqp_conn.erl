@@ -73,7 +73,8 @@ handle_call(_Request, _From, State) ->
 %% --------------------------------------------------------------------
 handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
-	handle_method(State, Channel, Size, Method, Rest);
+	NewState=handle_method(State, Channel, Size, Method, Rest),
+	{noreply, NewState};
 
 handle_cast({amqp.packet, Type, Channel, Size, FramePayload}, State) ->
 	io:format("> conn, frame, type:~p  payload:~p ~n", [Type, FramePayload]),
@@ -112,10 +113,10 @@ code_change(_OldVsn, State, _Extra) ->
 handle_method(State, Channel, Size, 'connection.start'=Method, Payload) ->
 	Result=amqp_proto:decode_method(Method, Payload),
   	io:format("> Conn, method: ~p  result: ~p~n", [Method, Result]),
-	{ok, State};
+	State;
 
 handle_method(State, Channel, Size, Method, Payload) ->
 	io:format("> conn, method: ~p~n", [Method]),
-	{ok, State}.
+	State.
 
 	
