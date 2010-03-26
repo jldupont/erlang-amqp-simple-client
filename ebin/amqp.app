@@ -10,7 +10,8 @@
             amqp_transport,
             amqp_transport_reader,
             amqp_transport_writer,
-            amqp_conn
+            amqp_conn,
+            amqp_ccmsg
         ]},
   {env, [
   			{default.address,          "127.0.0.1" }
@@ -22,6 +23,7 @@
   			,{transport.reader.server, amqp.transport.reader.server}
   			,{transport.writer.server, amqp.transport.writer.server}
   			,{conn.server,             amqp.conn.server}
+  			,{ccmsg.server,            amqp.ccmsg.server}
   
   		]},
   {registered,[amqp_sup]},

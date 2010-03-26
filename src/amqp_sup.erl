@@ -26,6 +26,7 @@ children() ->
 	 ,reader_spec()
 	 ,writer_spec()
 	 ,conn_spec()
+	 ,ccmsg_spec()
 	 ].
 
 transport_spec() ->
@@ -74,9 +75,22 @@ conn_spec() ->
 	TransportServer=getpar(transport.server),
 	WriterServer=getpar(transport.writer.server),
 	ConnServer=getpar(conn.server),
+	CCMsgServer=getpar(ccmsg.server),
 	
     Name = amqp_conn,
-    StartFunc = {amqp_conn, start_link, [[ConnServer, TransportServer, WriterServer]]},
+    StartFunc = {amqp_conn, start_link, [[ConnServer, TransportServer, WriterServer, CCMsgServer]]},
+    Restart = permanent, 
+    Shutdown = brutal_kill,
+    Modules = [amqp_conn],
+    Type = worker,
+    {Name, StartFunc, Restart, Shutdown, Type, Modules}.
+
+ccmsg_spec() ->
+	CCMsgServer=getpar(ccmsg.server),
+	ConnServer=getpar(conn.server),
+	
+    Name = amqp_conn,
+    StartFunc = {amqp_conn, start_link, [[CCMsgServer, ConnServer]]},
     Restart = permanent, 
     Shutdown = brutal_kill,
     Modules = [amqp_conn],

@@ -1,24 +1,15 @@
 %%% -------------------------------------------------------------------
 %%% Author  : jldupont
-%%% Description :
+%%% Description : Client-to-Client Messaging handler
 %%%
-%%% States:
-%%%		none   : no connection established
-%%%		start  : starting connection procedure
-%%%		auth   : authentication phase
-%%%		nego   : negotiation phase
-%%%		open   : connection open
-%%%		closed : 
-%%%
-%%% Created : Mar 19, 2010
+%%% Created : Mar 26, 2010
 %%% -------------------------------------------------------------------
--module(amqp_conn).
+-module(amqp_ccmsg).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("amqp.hrl").
 
 %% --------------------------------------------------------------------
 %% External exports
@@ -27,13 +18,14 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate=none, server, tserver, wserver, ccserver}).
+-record(state, {cstate, server, cserver}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
-start_link([Server, TransportServer, WriterServer, CCMsgServer]) ->
-	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, WriterServer, CCMsgServer], []).
+start_link([Server, ConnServer]) ->
+	gen_server:start_link({local, Server}, ?MODULE, [Server, ConnServer], []).
+
 
 %% ====================================================================
 %% Server functions
@@ -47,8 +39,8 @@ start_link([Server, TransportServer, WriterServer, CCMsgServer]) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([Server, TransportServer, WriterServer, CCMsgServer]) ->
-    {ok, #state{server=Server, tserver=TransportServer, wserver=WriterServer, ccserver=CCMsgServer}}.
+init([Server, ConnServer]) ->
+    {ok, #state{cstate=wait, server=Server, cserver=ConnServer}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -71,58 +63,19 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-
-%% Success in opening Transport socket
-%%
-handle_cast({ok, transport.open}, State) ->
+handle_cast({pkt, method, Channel, Size, Method, Rest}, State) ->
 	ok;
 
-%% Success in sending initial Protocol Header to AMQP server
-%%
-handle_cast({ok, transport.ready}, State) ->
+handle_cast({pkt, header, Channel, Size, Header}, State) ->
 	ok;
 
-%% Error in opening Transport socket
-%%
-handle_cast({error, transport.closed}, State) ->
+handle_cast({pkt, body, Channel, Size, Payload}, State) ->
 	ok;
 
-%%  AMQP Management Protocol  (channel==0)
-%%
-%%
-handle_cast({amqp.packet, ?TYPE_METHOD, 0, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
-	Method=amqp_proto:imap(ClassId, MethodId),
-	NewState=handle_method(State, 0, Size, Method, Rest),
-	{noreply, NewState};
-
-
-%%  Client-to-Client messaging
-%%
-%%  Send to CCMsg server
-%%
-handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
-	Method=amqp_proto:imap(ClassId, MethodId),
-	CCMsgServer=State#state.ccserver,
-	gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Rest}),
-	{noreply, State};
-
-handle_cast({amqp.packet, ?TYPE_HEADER, Channel, Size, Payload}, State) ->
-	Header=amqp_proto:decode_header(Payload),
-	CCMsgServer=State#state.ccserver,
-	gen_server:cast(CCMsgServer, {pkt, header, Channel, Size, Header}),
-	{noreply, State};
-
-handle_cast({amqp.packet, ?TYPE_BODY, Channel, Size, Payload}, State) ->
-	CCMsgServer=State#state.ccserver,
-	gen_server:cast(CCMsgServer, {pkt, body, Channel, Size, Payload}),
-	{noreply, State};
-
-
-%%%%%%%%%%%%%%%%%% CATCH-ALL %%%%%%%%%%%%%%%%%%%%%
-
-handle_cast(_, State) ->
+handle_cast(_Msg, State) ->
     {noreply, State}.
 
+ 
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
 %% Description: Handling all non call/cast messages
@@ -130,8 +83,7 @@ handle_cast(_, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_info(Info, State) ->
-	io:format(">conn: Info: ~p *** State: ~p~n", [Info, State]),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -153,13 +105,3 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-handle_method(State, Channel, Size, 'connection.start'=Method, Payload) ->
-	Result=amqp_proto:decode_method(Method, Payload),
-  	io:format("> Conn, method: ~p  result: ~p~n", [Method, Result]),
-	State;
-
-handle_method(State, Channel, Size, Method, Payload) ->
-	io:format("> conn, method: ~p~n", [Method]),
-	State.
-
-	

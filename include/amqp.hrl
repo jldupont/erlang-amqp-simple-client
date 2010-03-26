@@ -19,4 +19,15 @@
 -define(FRAME_HEADER_LENGTH,  7).
 
 -define(TYPE_METHOD, 1).
+-define(TYPE_HEADER, 2).
+-define(TYPE_BODY,   3).
+
+-define(TYPE_OOB_METHOD, 4).
+-define(TYPE_OOB_HEADER, 5).
+-define(TYPE_OOB_BODY,   6).
+
+-define(TYPE_TRACE,     7).
+-define(TYPE_HEARTBEAT, 8).
+-define(TYPE_REQUEST,   9).
+-define(TYPE_RESPONSE,  10).
 

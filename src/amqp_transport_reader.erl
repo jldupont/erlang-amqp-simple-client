@@ -116,7 +116,9 @@ handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State=#sta
 		{ok, FramePayload} ->
 			State2=State#state{cstate=wait.header},
 			ConnServer=State#state.cserver,
+			
 			%% Send-off complete AMQP protocol packet to Connection Agent
+			%% ==========================================================
 			gen_server:cast(ConnServer, {amqp.packet, Type, Channel, Size, FramePayload}),
 			gen_server:cast(self(), {From, do.wait.header});
 		
