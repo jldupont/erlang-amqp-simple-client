@@ -63,14 +63,44 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({pkt, method, Channel, Size, Method, Rest}, State) ->
-	ok;
 
+%%  Reset per-channel state
+%%
+%%
+handle_cast(reset, State) ->
+	erlang:erase(),
+	{noreply, State};
+
+handle_cast({pkt, method, Channel, Size, 'basic.deliver', Rest}, State) ->
+	put({Channel, state}, {start, basic.deliver}),
+	{noreply, State};
+
+handle_cast({pkt, method, Channel, Size, 'basic.return', Rest}, State) ->
+	put({Channel, state}, {start, basic.return}),
+	{noreply, State};
+
+handle_cast({pkt, method, Channel, Size, 'basic.get.ok', Rest}, State) ->
+	put({Channel, state}, {start, basic.get.ok}),
+	{noreply, State};
+
+%% Drop other Method messages
+%%
+%%  Deliver pending messages to the channel: the receipt of Method frames
+%%  effectively signals the end of a Content delivery event.
+%%
+handle_cast({pkt, method, _Channel, _Size, _, _Rest}, State) ->
+	{noreply, State};
+
+
+%% Store the Header part of the message for delivery when
+%%	the complete message gets here
+%%
 handle_cast({pkt, header, Channel, Size, Header}, State) ->
-	ok;
+	put({Channel, header}, Header),
+	{noreply, State};
 
 handle_cast({pkt, body, Channel, Size, Payload}, State) ->
-	ok;
+	{noreply, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.

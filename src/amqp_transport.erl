@@ -44,7 +44,7 @@
 
 -record(state, {cstate=wait.open, 
 				client=none,
-				socket=none, address=none, port=none,
+				socket=none, address=none, port=none, vhost=none,
 				options=[],
 				server=none, cserver=none, rserver=none, wserver=none
 				}).
@@ -95,31 +95,23 @@ handle_call(_Request, _From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 
-%% Default address:port
-handle_cast({From=_Client, open, [], Opts}, State=#state{cstate=wait.open}) ->
-	{ok, DefaultAddress}=application:get_env(default.address),
-	{ok, DefaultPort}=application:get_env(default.port),
-	gen_server:cast(self(), {From, open, [DefaultAddress, DefaultPort], Opts}),
-	{noreply, State};
-	
-
 %% Open the TCP transport socket
 %%
 %%	Upon success, signal to Connection.Server
 %%	Upon failure, signal back to Client
 %%
-handle_cast({From=Client, open, [Address, Port], Opts}, State=#state{cstate=wait.open}) ->
+handle_cast({From=Client, open, [Address, Port, Username, Password, Vhost], Opts}, State=#state{cstate=wait.open}) ->
 	{ok, TcpOptions}=application:get_env(amqp.tcp.options),
 	case gen_tcp:connect(Address, Port, TcpOptions) of
 		{ok, Socket} ->
 			State2=State#state{cstate=opened, socket=Socket, options=Opts, client=Client
-							  ,address=Address, port=Port},
+							  ,address=Address, port=Port, vhost=Vhost},
 			Rserver=State#state.rserver,
 			Wserver=State#state.wserver,
 			Cserver=State#state.cserver,
 			gen_server:cast(Rserver, {self(), socket, Socket}),
 			gen_server:cast(Wserver, {self(), socket, Socket}),
-			gen_server:cast(Cserver, {ok, transport.open});
+			gen_server:cast(Cserver, {ok, {transport.open, Username, Password, Vhost}});
 		{error, Reason} ->
 			State2=State,
 			From ! {error, {'transport.open', Reason}}

@@ -7,6 +7,7 @@
   {modules,[
             amqp_app,
             amqp_sup,
+            amqp_api,
             amqp_transport,
             amqp_transport_reader,
             amqp_transport_writer,
@@ -18,12 +19,17 @@
   			,{default.port,            5672}
   			,{default.user,            "guest"}
   			,{default.password,        "guest"}
+  			,{default.vhost,           "/"}
+  			  			
   			,{amqp.tcp.options,        [binary, {packet, 0}, {active,false}, {nodelay, true}]}
+  			,{api.server,              amqp.api.server}
   			,{transport.server,        amqp.transport.server}
   			,{transport.reader.server, amqp.transport.reader.server}
   			,{transport.writer.server, amqp.transport.writer.server}
   			,{conn.server,             amqp.conn.server}
   			,{ccmsg.server,            amqp.ccmsg.server}
+  			
+
   
   		]},
   {registered,[amqp_sup]},

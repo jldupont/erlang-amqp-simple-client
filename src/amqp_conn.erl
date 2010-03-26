@@ -3,12 +3,11 @@
 %%% Description :
 %%%
 %%% States:
-%%%		none   : no connection established
-%%%		start  : starting connection procedure
-%%%		auth   : authentication phase
-%%%		nego   : negotiation phase
-%%%		open   : connection open
-%%%		closed : 
+%%%		wait.start   : no connection established
+%%%		wait.secure  : waiting for Secure method
+%%%		wait.tune    : waiting for Tune method
+%%%		wait.open.ok : waiting for Open.ok method
+%%%		active       : connection active - processing
 %%%
 %%% Created : Mar 19, 2010
 %%% -------------------------------------------------------------------
@@ -27,7 +26,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate=none, server, tserver, wserver, ccserver}).
+-record(state, {cstate, server, tserver, wserver, ccserver}).
 
 %% ====================================================================
 %% External functions
@@ -48,7 +47,7 @@ start_link([Server, TransportServer, WriterServer, CCMsgServer]) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([Server, TransportServer, WriterServer, CCMsgServer]) ->
-    {ok, #state{server=Server, tserver=TransportServer, wserver=WriterServer, ccserver=CCMsgServer}}.
+    {ok, #state{cstate=wait.start, server=Server, tserver=TransportServer, wserver=WriterServer, ccserver=CCMsgServer}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -74,18 +73,22 @@ handle_call(_Request, _From, State) ->
 
 %% Success in opening Transport socket
 %%
+%%  Signal the C-to-C messaging agent to reset
+%%
 handle_cast({ok, transport.open}, State) ->
-	ok;
+	CCServer=State#state.ccserver,
+	gen_server:cast(CCServer, reset),
+	{noreply, State};
 
 %% Success in sending initial Protocol Header to AMQP server
 %%
 handle_cast({ok, transport.ready}, State) ->
-	ok;
+	{noreply, State};
 
 %% Error in opening Transport socket
 %%
 handle_cast({error, transport.closed}, State) ->
-	ok;
+	{noreply, State};
 
 %%  AMQP Management Protocol  (channel==0)
 %%

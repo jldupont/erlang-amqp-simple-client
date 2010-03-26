@@ -18,17 +18,19 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([ 'open.conn'/0, 'open.conn'/2, 'open.conn'/4 
+-export([ 'open.conn'/0, 'open.conn'/5 
 		, 'open.chan'/1 
 		]).
 
 %% management functions
--export([ start/0 ]).
+-export([ start_link/1 ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, {cstate, server, tserver, cserver,
+				user, password, address, port, vhost
+				}).
 
 %% ====================================================================
 %% API - External functions
@@ -43,13 +45,10 @@
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 'open.conn'() ->
-	gen_server:cast(?SERVER, {self(), 'open.conn', default, default, default, default}).
+	gen_server:cast(?SERVER, {self(), 'open.conn'}).
 													  
-'open.conn'(Username, Password) ->
-	gen_server:cast(?SERVER, {self(), 'open.conn', Username, Password, default, default}).
-
-'open.conn'(Username, Password, Address, Port) ->
-	gen_server:cast(?SERVER, {self(), 'open.conn', Username, Password, Address, Port}).
+'open.conn'(Username, Password, Address, Port, Vhost) ->
+	gen_server:cast(?SERVER, {self(), 'open.conn', Username, Password, Address, Port, Vhost}).
 
 %% --------------------------------------------------------------------
 %% Function: 'open.chan'/1
@@ -67,8 +66,8 @@
 %% Management functions
 %% ====================================================================
 
-start() ->
-	gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link([Server, TransportServer, ConnServer]) ->
+	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, ConnServer], []).
 
 
 
@@ -84,8 +83,8 @@ start() ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([]) ->
-    {ok, #state{}}.
+init([Server, TransportServer, ConnServer]) ->
+    {ok, #state{server=Server, tserver=TransportServer, cserver=ConnServer}}.
 
 handle_call(_,__,_) -> ok.
 
@@ -96,6 +95,20 @@ handle_call(_,__,_) -> ok.
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+
+handle_cast({From, 'open.conn'}, State) ->
+	Username=getpar(default.user),
+	Password=getpar(default.password),
+	Address=getpar(default.address),
+	Port=getpar(default.port),
+	Vhost=getpar(default.vhost),
+	gen_server:cast(self(), {From, 'open.conn', Username, Password, Address, Port, Vhost}),
+	{noreply, State};
+
+handle_cast({From, 'open.conn', Username, Password, Address, Port, Vhost}, State) ->
+	{noreply, State#state{user=Username, password=Password, address=Address, port=Port, vhost=Vhost}};
+
+
 handle_cast(Msg, State) ->
 	io:format("Msg: ~p", [Msg]),
     {noreply, State}.
@@ -129,4 +142,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
+getpar(Param) ->
+	case application:get_env(Param) of
+		{ok, Value} -> 
+			Value;
+		_ -> 
+			erlang:error({error, {missing.app.parameter, Param}})
+	end.
 

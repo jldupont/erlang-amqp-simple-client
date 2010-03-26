@@ -27,7 +27,22 @@ children() ->
 	 ,writer_spec()
 	 ,conn_spec()
 	 ,ccmsg_spec()
+	 ,api_spec()
 	 ].
+
+api_spec() ->
+	ApiServer=getpar(api.server),
+	TransportServer=getpar(transport.server),
+	ConnServer=getpar(conn.server),
+	
+    Name = amqp_api,
+    StartFunc = {amqp_api, start_link, [[ApiServer, TransportServer, ConnServer]]},
+    Restart = permanent, 
+    Shutdown = brutal_kill,
+    Modules = [amqp_api],
+    Type = worker,
+    {Name, StartFunc, Restart, Shutdown, Type, Modules}.
+
 
 transport_spec() ->
 	TransportServer=getpar(transport.server),
@@ -89,11 +104,11 @@ ccmsg_spec() ->
 	CCMsgServer=getpar(ccmsg.server),
 	ConnServer=getpar(conn.server),
 	
-    Name = amqp_conn,
-    StartFunc = {amqp_conn, start_link, [[CCMsgServer, ConnServer]]},
+    Name = amqp_ccmsg,
+    StartFunc = {amqp_ccmsg, start_link, [[CCMsgServer, ConnServer]]},
     Restart = permanent, 
     Shutdown = brutal_kill,
-    Modules = [amqp_conn],
+    Modules = [amqp_ccmsg],
     Type = worker,
     {Name, StartFunc, Restart, Shutdown, Type, Modules}.
 
