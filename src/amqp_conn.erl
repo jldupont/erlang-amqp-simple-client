@@ -26,7 +26,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate, server, tserver, wserver, ccserver}).
+-record(state, {cstate, server, tserver, wserver, ccserver,
+				user, password, vhost}).
 
 %% ====================================================================
 %% External functions
@@ -70,6 +71,9 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+
+handle_cast({conn.params, Username, Password, Vhost}, State) ->
+	{noreply, State#state{user=Username, password=Password, vhost=Vhost}};
 
 %% Success in opening Transport socket
 %%

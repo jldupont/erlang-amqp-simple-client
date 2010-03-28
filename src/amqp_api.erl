@@ -106,6 +106,13 @@ handle_cast({From, 'open.conn'}, State) ->
 	{noreply, State};
 
 handle_cast({From, 'open.conn', Username, Password, Address, Port, Vhost}, State) ->
+	
+	%% Connection related settings first, manage possible race-condition
+	ConnServer=State#state.cserver,
+	gen_server:cast(ConnServer, {conn.params, Username, Password, Vhost}),
+	
+	TransportServer=State#state.tserver,
+	gen_server:cast(TransportServer, {From, open, Username, Password, Vhost}),
 	{noreply, State#state{user=Username, password=Password, address=Address, port=Port, vhost=Vhost}};
 
 

@@ -20,6 +20,8 @@
   			,{default.user,            "guest"}
   			,{default.password,        "guest"}
   			,{default.vhost,           "/"}
+  			,{default.login.method,    "AMQPLAIN"}
+  			,{default.locale,          "en_US"}
   			  			
   			,{amqp.tcp.options,        [binary, {packet, 0}, {active,false}, {nodelay, true}]}
   			,{api.server,              amqp.api.server}
@@ -28,8 +30,6 @@
   			,{transport.writer.server, amqp.transport.writer.server}
   			,{conn.server,             amqp.conn.server}
   			,{ccmsg.server,            amqp.ccmsg.server}
-  			
-
   
   		]},
   {registered,[amqp_sup]},
