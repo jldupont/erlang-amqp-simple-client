@@ -91,16 +91,16 @@ imap(?BASIC, 111) -> 'basic.recover.ok';
 imap(_, _) -> invalid.
 
 
-emap('connection.start')    -> {10, 10};
-emap('connection.start.ok') -> {10, 11};
-emap('connection.secure')   -> {10, 20};
-emap('connection.secure.ok')-> {10, 21};
-emap('connection.tune')     -> {10, 30};
-emap('connection.tune.ok')  -> {10, 31};
-emap('connection.open')     -> {10, 40};
-emap('connection.open.ok')  -> {10, 41};
-emap('connection.close')    -> {10, 50};
-emap('connection.close.ok') -> {10, 51};
+emap('connection.start')    -> <<10:16, 10:16>>;
+emap('connection.start.ok') -> <<10:16, 11:16>>;
+emap('connection.secure')   -> <<10:16, 20:16>>;
+emap('connection.secure.ok')-> <<10:16, 21:16>>;
+emap('connection.tune')     -> <<10:16, 30:16>>;
+emap('connection.tune.ok')  -> <<10:16, 31:16>>;
+emap('connection.open')     -> <<10:16, 40:16>>;
+emap('connection.open.ok')  -> <<10:16, 41:16>>;
+emap('connection.close')    -> <<10:16, 50:16>>;
+emap('connection.close.ok') -> <<10:16, 51:16>>;
 
 emap('channel.open')     -> {20, 10};
 emap('channel.open.ok')  -> {20, 11};
@@ -415,5 +415,59 @@ encode_bit(Byte, Pos, true) when Byte =< 255, Pos =< 7 ->
 encode_bit(Byte, Pos, _) when Byte =< 255, Pos =< 7 ->
 	ClearBit= bnot (16#01 bsl Pos),
 	Byte band ClearBit.
+
+
+%% Encodes a "table" compound data-type
+%%
+%%  Each element of the table must have the form:
+%%	{Name, Prim, Data}
+%%
+encode_table(Table) ->
+	encode_table(Table, <<>>).
+
+encode_table([], Acc) ->
+	Size=erlang:size(Acc),
+	<<Size:32, Acc/binary>>;
+
+encode_table([{Name, Prim, Data}|Rest], Acc) ->
+	Result=case Prim of
+		table ->
+			Table=encode_table(Data, Acc),
+			<<$F, Table/binary>>;
+		longstr ->
+			Str=encode_prim(longstr, Data),
+			<<$S, Str/binary>>;
+		long ->
+			Int=encode_prim(long, Data),
+			<<$I, Int/binary>>
+	end,
+	NameStr=encode_prim(shortstr, Name),
+	%%io:format("!! encode_table, NameStr:~p Prim:~p Data:~p ----- Acc: ~p~n",[NameStr, Prim, Data, Acc]),	
+	encode_table(Rest, <<Acc/binary, NameStr/binary, Result/binary>>);
+
+encode_table(Item, Acc) ->
+	throw({encode_table, invalid.item, Item, {acc, Acc}}).
+
+	
+
+%% Encodes a list of method parameters
+%%
+%%	Each element of the list must have the following form:
+%%		{Type, Data}
+%%
+encode_method_params(Liste) ->
+	encode_method_params(Liste, <<>>).
+
+encode_method_params([], Acc) ->
+	Acc;
+
+encode_method_params([{Type, Data}|Rest], Acc) ->
+	Result=case Type of
+		table ->
+			encode_table(Data);
+		_ ->
+			encode_prim(Type, Data)
+	end,
+	encode_method_params(Rest, <<Acc/binary, Result/binary>>).
 
 

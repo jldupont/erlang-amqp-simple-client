@@ -14,7 +14,7 @@
 %% --------------------------------------------------------------------
 %% Defines
 %% --------------------------------------------------------------------
--define(SERVER, amqp_api).
+-define(SERVER, amqp.api.server).
 
 %% --------------------------------------------------------------------
 %% External exports
@@ -106,18 +106,19 @@ handle_cast({From, 'open.conn'}, State) ->
 	{noreply, State};
 
 handle_cast({From, 'open.conn', Username, Password, Address, Port, Vhost}, State) ->
+	io:format("> conn, opening, username: ~p password: ~p ~n",[Username, Password]),
 	
 	%% Connection related settings first, manage possible race-condition
 	ConnServer=State#state.cserver,
 	gen_server:cast(ConnServer, {conn.params, Username, Password, Vhost}),
 	
 	TransportServer=State#state.tserver,
-	gen_server:cast(TransportServer, {From, open, Username, Password, Vhost}),
+	gen_server:cast(TransportServer, {From, open, [Address, Port], []}),
 	{noreply, State#state{user=Username, password=Password, address=Address, port=Port, vhost=Vhost}};
 
 
 handle_cast(Msg, State) ->
-	io:format("Msg: ~p", [Msg]),
+	io:format("> api, Msg: ~p", [Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

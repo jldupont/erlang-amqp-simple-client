@@ -81,6 +81,7 @@ handle_cast({_From, socket, Socket}, State) ->
 			State2=State#state{cstate=wait.packet, socket=Socket},
 			gen_server:cast(Tserver, {ok, 'transport.writer.send.protocol.start.header'});
 		{error, Reason} ->
+			io:format("!! Writer/socket: error, reason: ~p~n", [Reason]),
 			State2=State#state{cstate=wait.socket, socket=none},
 			gen_tcp:close(Socket),
 			gen_server:cast(Tserver, {error, {'transport.writer.send.header', Reason}})
@@ -89,12 +90,14 @@ handle_cast({_From, socket, Socket}, State) ->
 
 handle_cast({_From, packet, Type, Channel, Payload}, State=#state{cstate=wait.packet}) ->
 	Socket=State#state.socket,
-	Len=erlang:length(Payload),
-	Frame= <<Type:8, Channel:16, Len:32, Payload, 16#ce:8>>,
+	Len=erlang:size(Payload),
+	Frame= <<Type:8, Channel:16, Len:32, Payload/binary, 16#ce:8>>,
 	case gen_tcp:send(Socket, Frame) of
 		ok ->
+			io:format("!! Writer/packet, sent, Type:~p Payload:~p ~n", [Type, Payload]),
 			State2=State;
 		{error, Reason} ->
+			io:format("!! Writer/packet: error, reason: ~p~n", [Reason]),
 			gen_tcp:close(Socket),
 			State2=State#state{socket=none, cstate=wait.socket},
 			Tserver=State#state.tserver,

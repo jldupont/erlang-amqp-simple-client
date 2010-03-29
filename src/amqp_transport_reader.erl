@@ -87,15 +87,15 @@ handle_cast({From, do.wait.header}, State=#state{cstate=wait.header}) ->
 	Socket=State#state.socket,
 	case gen_tcp:recv(Socket, ?FRAME_HEADER_LENGTH, ?TIMEOUT_WAIT_HEADER) of
 		{ok, FrameHeader} ->
-			%io:format("> reader, header: ~p~n", [FrameHeader]),
+			io:format("> reader, header: ~p~n", [FrameHeader]),
 			State2=State#state{cstate=wait.payload},
 			gen_server:cast(self(), {From, do.wait.payload, FrameHeader});
 		{error, timeout} ->
-			%io:format("> reader, timeout~n"),
+			io:format("> reader/header, timeout~n"),
 			State2=State,
 			gen_server:cast(self(), {From, do.wait.header});
 		{error, Reason} ->
-			%io:format("> reader, error, reason: ~p~n", [Reason]),
+			io:format("> reader/header, error, reason: ~p~n", [Reason]),
 			State2=State#state{cstate=wait.init},
 			Tserver=State#state.tserver,
 			gen_server:cast(Tserver, {error, {'transport.reader.wait.header', Reason}})
@@ -124,6 +124,7 @@ handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State=#sta
 		
 			%% Errors should be few in between... setup Tserver just then 
 		{error, Reason} ->
+			io:format("> reader/payload, error, reason: ~p~n", [Reason]),
 			State2=State#state{cstate=wait.init},
 			Tserver=State#state.tserver,
 			gen_server:cast(Tserver, {error, {'transport.reader.wait.payload', Reason}})
@@ -131,7 +132,8 @@ handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State=#sta
 	{noreply, State2};
 
 %% Discard message from queue...
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+	io:format("!! Reader, unhandled msg: ~p~n", [Msg]),
 	{noreply, State}.
 
 
@@ -143,7 +145,7 @@ handle_cast(_Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(Info, State) ->
-	io:format(">reader: Info: ~p *** State: ~p~n", [Info, State]),
+	io:format("!! reader: Info: ~p *** State: ~p~n", [Info, State]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

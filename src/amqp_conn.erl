@@ -127,7 +127,8 @@ handle_cast({amqp.packet, ?TYPE_BODY, Channel, Size, Payload}, State) ->
 
 %%%%%%%%%%%%%%%%%% CATCH-ALL %%%%%%%%%%%%%%%%%%%%%
 
-handle_cast(_, State) ->
+handle_cast(Msg, State) ->
+	io:format("> conn: msg: ~p~n", [Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -157,16 +158,64 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
+
 %% --------------------------------------------------------------------
-%%% Internal functions
+%%% MAIN state-machine
 %% --------------------------------------------------------------------
-handle_method(State, Channel, Size, 'connection.start'=Method, Payload) ->
+
+
+%% Received "start" method ==> generate "start.ok" method
+%%
+handle_method(State, Channel, Size, 'connection.start'=Method, Payload) when State#state.cstate==wait.start ->
 	Result=amqp_proto:decode_method(Method, Payload),
   	io:format("> Conn, method: ~p  result: ~p~n", [Method, Result]),
-	State;
+	Frame=frame_method(State, 'connection.start.ok'),
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, 0, Frame}),
+	State#state{cstate=wait.tune};
+
+handle_method(State, _Channel, _Size, 'connection.start'=_Method, _Payload) ->
+	Tserver=State#state.tserver,
+	gen_server:cast(Tserver, {error, {amqp.proto.error, unexpected.start.method}}),
+	State#state{cstate=wait.start};
+
 
 handle_method(State, Channel, Size, Method, Payload) ->
 	io:format("> conn, method: ~p~n", [Method]),
 	State.
+
+	
+%% --------------------------------------------------------------------
+%%% Internal functions
+%% --------------------------------------------------------------------
+
+frame_method(State, 'connection.start.ok') ->
+	{ok, Cprops}=application:get_env(client.properties),
+	%io:format("! frame_method, Cprops: ~p~n", [Cprops]),
+	
+	%CpropsTable=amqp_proto:encode_table(Cprops),
+	
+	{ok, Mechanism}=application:get_env(default.login.method),
+	%io:format("! frame_method, mechanisms: ~p~n", [Mechanism]),
+	
+	UserField=amqp_proto:encode_prim(longstr, State#state.user),
+	PasswordField=amqp_proto:encode_prim(longstr, State#state.password),
+	%io:format("! frame_method, user: ~p pass:~p~n", [UserField, PasswordField]),
+	
+	Response=  <<UserField/binary, PasswordField/binary>>,
+	%io:format("! frame_method, response: ~p~n", [Response]),
+	
+	{ok, Locale}=application:get_env(default.locale),
+	%io:format("! frame_method, locale: ~p~n", [Locale]),
+	
+	Params=amqp_proto:encode_method_params([{table, Cprops}
+										   ,{shortstr, Mechanism}
+										   ,{longstr, erlang:binary_to_list(Response)}
+										   ,{shortstr, Locale}
+										   ]),
+	Method=amqp_proto:emap('connection.start.ok'),
+	<<Method/binary, Params/binary>>.
+
 
 	

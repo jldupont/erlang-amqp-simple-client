@@ -22,6 +22,7 @@
   			,{default.vhost,           "/"}
   			,{default.login.method,    "AMQPLAIN"}
   			,{default.locale,          "en_US"}
+  			,{client.properties,       [{"library", longstr, "amqp-simple-client"}, {"library_version", longstr, "1.0"}]}
   			  			
   			,{amqp.tcp.options,        [binary, {packet, 0}, {active,false}, {nodelay, true}]}
   			,{api.server,              amqp.api.server}
