@@ -169,7 +169,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 handle_method(State, Channel, Size, 'connection.start'=Method, Payload) when State#state.cstate==wait.start ->
 	Result=amqp_proto:decode_method(Method, Payload),
-  	io:format("> Conn, method: ~p  result: ~p~n", [Method, Result]),
+	error_logger:info_msg("Connection.start: ~p", [Result]),
 	Frame=frame_method(State, 'connection.start.ok'),
 	Wserver=State#state.wserver,
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, 0, Frame}),
@@ -179,6 +179,19 @@ handle_method(State, _Channel, _Size, 'connection.start'=_Method, _Payload) ->
 	Tserver=State#state.tserver,
 	gen_server:cast(Tserver, {error, {amqp.proto.error, unexpected.start.method}}),
 	State#state{cstate=wait.start};
+
+handle_method(State, _Channel, _Size, 'connection.tune'=Method, Payload) when State#state.cstate==wait.tune ->
+	Result=amqp_proto:decode_method(Method, Payload),
+	error_logger:info_msg("Connection.tune: ~p", [Result]),
+	Frame=frame_method(State, 'connection.tune.ok'),
+	
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, 0, Frame}),
+	
+	FrameOpen=frame_method(State, 'connection.open'),
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, 0, FrameOpen}),
+
+	State#state{cstate=wait.open.ok};
 
 
 handle_method(State, Channel, Size, Method, Payload) ->
@@ -192,19 +205,12 @@ handle_method(State, Channel, Size, Method, Payload) ->
 
 frame_method(State, 'connection.start.ok') ->
 	{ok, Cprops}=application:get_env(client.properties),
-	%io:format("! frame_method, Cprops: ~p~n", [Cprops]),
-	
-	%CpropsTable=amqp_proto:encode_table(Cprops),
-	
 	{ok, Mechanism}=application:get_env(default.login.method),
-	%io:format("! frame_method, mechanisms: ~p~n", [Mechanism]),
 	
-	<<_Size:32, LoginTable/binary>> =amqp_proto:encode_table([{"LOGIN", longstr, State#state.user}, {"PASSWORD", longstr, State#state.password}]),
-	
-	%io:format("! frame_method, response: ~p~n", [Response]),
+	<<_Size:32, LoginTable/binary>> =amqp_proto:encode_table([{"LOGIN", longstr, State#state.user}, 
+															  {"PASSWORD", longstr, State#state.password}]),
 	
 	{ok, Locale}=application:get_env(default.locale),
-	%io:format("! frame_method, locale: ~p~n", [Locale]),
 	
 	Params=amqp_proto:encode_method_params([{table, Cprops}
 										   ,{shortstr, Mechanism}
@@ -212,7 +218,27 @@ frame_method(State, 'connection.start.ok') ->
 										   ,{shortstr, Locale}
 										   ]),
 	Method=amqp_proto:emap('connection.start.ok'),
-	<<Method/binary, Params/binary>>.
+	<<Method/binary, Params/binary>>;
+
+frame_method(_State, 'connection.tune.ok') ->
+	{ok, ChannelMax}=application:get_env(default.channel.max),
+	{ok, FrameMax}=application:get_env(default.frame.max),
+	{ok, Heartbeat}=application:get_env(default.heartbeat),
+	Params=amqp_proto:encode_method_params([{short, ChannelMax}
+										   ,{long, FrameMax}
+										   ,{short, Heartbeat}
+										   ]),
+	Method=amqp_proto:emap('connection.tune.ok'),
+	<<Method/binary, Params/binary>>;
+
+
+frame_method(State, 'connection.open') ->
+	Vhost=State#state.vhost,
+	VhostParam = amqp_proto:encode_prim(shortstr, Vhost),
+	Method=amqp_proto:emap('connection.open'),
+	<<Method/binary, VhostParam/binary>>.
+
+	
 
 
 	

@@ -165,8 +165,8 @@ decode_method('connection.secure', Payload) ->
 
 decode_method('connection.tune', Payload) ->
 	[{short, _, ChannelMax}, Rest]=decode_prim(short, Payload),
-	[{long,  _, FrameMax},   Rest2] = Rest,
-	[{short, _, Heartbeat},  _Rest3] = Rest2,
+	[{long,  _, FrameMax},   Rest2] = decode_prim(long, Rest),
+	[{short, _, Heartbeat},  _Rest3] = decode_prim(short, Rest2),
 	[{channel.max, ChannelMax}, {frame.max, FrameMax}, {heartbeat, Heartbeat}];
 
 decode_method('connection.open', Payload) ->
@@ -396,16 +396,19 @@ encode_prim(longstr, String) ->
 	<<Size:32, ByteString/binary>>;
 
 encode_prim(longlong, LongLong) ->
-	<<LongLong:64/binary>>;
+	<<LongLong:64>>;
 
 encode_prim(long, Long) ->
-	<<Long:32/binary>>;
+	<<Long:32>>;
 
 encode_prim(short, Short) ->
-	<<Short:16/binary>>;
+	<<Short:16>>;
 
 encode_prim(octet, Octet) ->
-	<<Octet:8/binary>>.
+	<<Octet:8>>;
+
+encode_prim(Type, Data) ->
+	throw({encode_prim, invalid.type, Type, Data}).
 
 
 encode_bit(Byte, Pos, true) when Byte =< 255, Pos =< 7 ->
@@ -462,12 +465,14 @@ encode_method_params([], Acc) ->
 	Acc;
 
 encode_method_params([{Type, Data}|Rest], Acc) ->
+	%io:format("** encode_method_params: Type:~p  -- Data: ~p~n", [Type, Data]),
 	Result=case Type of
 		table ->
 			encode_table(Data);
 		_ ->
 			encode_prim(Type, Data)
 	end,
+	%io:format("** encode_method_params: Type:~p  -- Data: ~p  Result:~p ~n", [Type, Data, Result]),
 	encode_method_params(Rest, <<Acc/binary, Result/binary>>).
 
 
