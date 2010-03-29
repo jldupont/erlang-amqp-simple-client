@@ -94,7 +94,7 @@ handle_cast({_From, packet, Type, Channel, Payload}, State=#state{cstate=wait.pa
 	Frame= <<Type:8, Channel:16, Len:32, Payload/binary, 16#ce:8>>,
 	case gen_tcp:send(Socket, Frame) of
 		ok ->
-			io:format("!! Writer/packet, sent, Type:~p Payload:~p ~n", [Type, Payload]),
+			io:format("!! Writer/packet, sent, Size:~p  Type:~p Payload:~p ~n", [Len, Type, Payload]),
 			State2=State;
 		{error, Reason} ->
 			io:format("!! Writer/packet: error, reason: ~p~n", [Reason]),

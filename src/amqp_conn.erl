@@ -199,11 +199,8 @@ frame_method(State, 'connection.start.ok') ->
 	{ok, Mechanism}=application:get_env(default.login.method),
 	%io:format("! frame_method, mechanisms: ~p~n", [Mechanism]),
 	
-	UserField=amqp_proto:encode_prim(longstr, State#state.user),
-	PasswordField=amqp_proto:encode_prim(longstr, State#state.password),
-	%io:format("! frame_method, user: ~p pass:~p~n", [UserField, PasswordField]),
+	<<_Size:32, LoginTable/binary>> =amqp_proto:encode_table([{"LOGIN", longstr, State#state.user}, {"PASSWORD", longstr, State#state.password}]),
 	
-	Response=  <<UserField/binary, PasswordField/binary>>,
 	%io:format("! frame_method, response: ~p~n", [Response]),
 	
 	{ok, Locale}=application:get_env(default.locale),
@@ -211,7 +208,7 @@ frame_method(State, 'connection.start.ok') ->
 	
 	Params=amqp_proto:encode_method_params([{table, Cprops}
 										   ,{shortstr, Mechanism}
-										   ,{longstr, erlang:binary_to_list(Response)}
+										   ,{longstr, erlang:binary_to_list(LoginTable)}
 										   ,{shortstr, Locale}
 										   ]),
 	Method=amqp_proto:emap('connection.start.ok'),
