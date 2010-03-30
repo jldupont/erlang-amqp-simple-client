@@ -2,6 +2,28 @@
 %%% Author  : jldupont
 %%% Description :
 %%%
+%%% States:
+%%%  
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
+%%% Messages:
+%%% ---------
+%%%
+%%%	api --- open        ---> transport.server
+%%% api --- conn.params ---> conn.server
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
 %%% Created : Mar 19, 2010
 %%% -------------------------------------------------------------------
 -module(amqp_api).
@@ -10,6 +32,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
+-include("amqp.hrl").
 
 %% --------------------------------------------------------------------
 %% Defines
@@ -18,8 +41,9 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([ 'open.conn'/0, 'open.conn'/5 
-		, 'open.chan'/1 
+-export([ 'conn.open'/0, 'conn.open'/5 
+		, 'chan.open'/1
+		, 'exchange.declare'/6
 		]).
 
 %% management functions
@@ -28,7 +52,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate, server, tserver, cserver,
+-record(state, {cstate, server, tserver, cserver, wserver,
 				user, password, address, port, vhost
 				}).
 
@@ -44,11 +68,11 @@
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-'open.conn'() ->
-	gen_server:cast(?SERVER, {self(), 'open.conn'}).
+'conn.open'() ->
+	gen_server:cast(?SERVER, {self(), 'conn.open'}).
 													  
-'open.conn'(Username, Password, Address, Port, Vhost) ->
-	gen_server:cast(?SERVER, {self(), 'open.conn', Username, Password, Address, Port, Vhost}).
+'conn.open'(Username, Password, Address, Port, Vhost) ->
+	gen_server:cast(?SERVER, {self(), 'conn.open', Username, Password, Address, Port, Vhost}).
 
 %% --------------------------------------------------------------------
 %% Function: 'open.chan'/1
@@ -58,16 +82,23 @@
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-'open.chan'(Ref) ->
-	gen_server:cast(?SERVER, {self(), 'open.chan', Ref}).
+'chan.open'(Ref) when is_integer(Ref) ->
+	gen_server:cast(?SERVER, {self(), 'open.chan', Ref});
 
+'chan.open'(Ref) ->
+	{error, {invalid.parameter, Ref}}.
+
+
+%'exchange.declare
+'exchange.declare'(Name, Type, Durable, AutoDelete, Internal, NoWait) ->
+	ok.
 
 %% ====================================================================
 %% Management functions
 %% ====================================================================
 
-start_link([Server, TransportServer, ConnServer]) ->
-	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, ConnServer], []).
+start_link([Server, TransportServer, ConnServer, WriterServer]) ->
+	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, ConnServer, WriterServer], []).
 
 
 
@@ -83,8 +114,8 @@ start_link([Server, TransportServer, ConnServer]) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([Server, TransportServer, ConnServer]) ->
-    {ok, #state{server=Server, tserver=TransportServer, cserver=ConnServer}}.
+init([Server, TransportServer, ConnServer, WriterServer]) ->
+    {ok, #state{server=Server, tserver=TransportServer, cserver=ConnServer, wserver=WriterServer}}.
 
 handle_call(_,__,_) -> ok.
 
@@ -96,16 +127,16 @@ handle_call(_,__,_) -> ok.
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 
-handle_cast({From, 'open.conn'}, State) ->
+handle_cast({From, 'conn.open'}, State) ->
 	Username=getpar(default.user),
 	Password=getpar(default.password),
 	Address=getpar(default.address),
 	Port=getpar(default.port),
 	Vhost=getpar(default.vhost),
-	gen_server:cast(self(), {From, 'open.conn', Username, Password, Address, Port, Vhost}),
+	gen_server:cast(self(), {From, 'conn.open', Username, Password, Address, Port, Vhost}),
 	{noreply, State};
 
-handle_cast({From, 'open.conn', Username, Password, Address, Port, Vhost}, State) ->
+handle_cast({From, 'conn.open', Username, Password, Address, Port, Vhost}, State) ->
 	io:format("> conn, opening, username: ~p password: ~p ~n",[Username, Password]),
 	
 	%% Connection related settings first, manage possible race-condition
@@ -117,8 +148,17 @@ handle_cast({From, 'open.conn', Username, Password, Address, Port, Vhost}, State
 	{noreply, State#state{user=Username, password=Password, address=Address, port=Port, vhost=Vhost}};
 
 
+%% channel.open
+%%
+handle_cast({_From, 'chan.open', Ref}, State) ->
+	MethodFrame=amqp_proto:encode_method('channel.open', void),
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Ref, MethodFrame}),
+	{noreply, State};
+
+
 handle_cast(Msg, State) ->
-	io:format("> api, Msg: ~p", [Msg]),
+	error_logger:warning_msg("api.server: unexpected msg: ~p", [Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

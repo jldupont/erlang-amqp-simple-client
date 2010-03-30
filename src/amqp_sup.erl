@@ -34,9 +34,10 @@ api_spec() ->
 	ApiServer=getpar(api.server),
 	TransportServer=getpar(transport.server),
 	ConnServer=getpar(conn.server),
+	WriterServer=getpar(transport.writer.server),
 	
     Name = amqp_api,
-    StartFunc = {amqp_api, start_link, [[ApiServer, TransportServer, ConnServer]]},
+    StartFunc = {amqp_api, start_link, [[ApiServer, TransportServer, ConnServer, WriterServer]]},
     Restart = permanent, 
     Shutdown = brutal_kill,
     Modules = [amqp_api],

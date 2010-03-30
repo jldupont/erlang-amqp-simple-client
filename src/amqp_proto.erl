@@ -5,6 +5,8 @@
 
 -compile(export_all).
 
+-include("amqp.hrl").
+
 %%
 %% Definitions
 %%
@@ -102,46 +104,47 @@ emap('connection.open.ok')  -> <<10:16, 41:16>>;
 emap('connection.close')    -> <<10:16, 50:16>>;
 emap('connection.close.ok') -> <<10:16, 51:16>>;
 
-emap('channel.open')     -> {20, 10};
-emap('channel.open.ok')  -> {20, 11};
-emap('channel.flow')     -> {20, 20};
-emap('channel.flow.ok')  -> {20, 21};
-emap('channel.close')    -> {20, 40};
-emap('channel.close.ok') -> {20, 41};
+emap('channel.open')     -> <<20:16, 10:16>>;
+emap('channel.open.ok')  -> <<20:16, 11:16>>;
+emap('channel.flow')     -> <<20:16, 20:16>>;
+emap('channel.flow.ok')  -> <<20:16, 21:16>>;
+emap('channel.close')    -> <<20:16, 40:16>>;
+emap('channel.close.ok') -> <<20:16, 41:16>>;
 
-emap('exchange.declare')    -> {40, 10};
-emap('exchange.declare.ok') -> {40, 11};
-emap('exchange.delete')     -> {40, 20};
-emap('exchange.delete.ok')  -> {40, 21};
+emap('exchange.declare')    -> <<40:16, 10:16>>;
+emap('exchange.declare.ok') -> <<40:16, 11:16>>;
+emap('exchange.delete')     -> <<40:16, 20:16>>;
+emap('exchange.delete.ok')  -> <<40:16, 21:16>>;
 
-emap('queue.declare')    -> {50, 10};
-emap('queue.declare.ok') -> {50, 11};
-emap('queue.bind')       -> {50, 20};
-emap('queue.bind.ok')    -> {50, 21};
-emap('queue.unbind')     -> {50, 50};
-emap('queue.unbind.ok')  -> {50, 51};
-emap('queue.purge')      -> {50, 30};
-emap('queue.purge.ok')   -> {50, 31};
-emap('queue.delete')     -> {50, 40};
-emap('queue.delete.ok')  -> {50, 41};
+emap('queue.declare')    -> <<50:16, 10:16>>;
+emap('queue.declare.ok') -> <<50:16, 11:16>>;
+emap('queue.bind')       -> <<50:16, 20:16>>;
+emap('queue.bind.ok')    -> <<50:16, 21:16>>;
+emap('queue.unbind')     -> <<50:16, 50:16>>;
+emap('queue.unbind.ok')  -> <<50:16, 51:16>>;
+emap('queue.purge')      -> <<50:16, 30:16>>;
+emap('queue.purge.ok')   -> <<50:16, 31:16>>;
+emap('queue.delete')     -> <<50:16, 40:16>>;
+emap('queue.delete.ok')  -> <<50:16, 41:16>>;
 
-emap('basic.qos')        -> {60, 10};
-emap('basic.qos.ok')     -> {60, 11};
-emap('basic.consume')    -> {60, 20};
-emap('basic.consume.ok') -> {60, 21};
-emap('basic.cancel')     -> {60, 30};
-emap('basic.cancel.ok')  -> {60, 31};
-emap('basic.publish')    -> {60, 40};
-emap('basic.return')     -> {60, 50};
-emap('basic.deliver')    -> {60, 60};
-emap('basic.get')        -> {60, 70};
-emap('basic.get.ok')     -> {60, 71};
-emap('basic.get.empty')  -> {60, 72};
-emap('basic.ack')        -> {60, 80};
-emap('basic.reject')        -> {60, 90};
-emap('basic.recover.async') -> {60, 100};
-emap('basic.recover')       -> {60, 110};
-emap('basic.recover.ok')    -> {60, 111};
+emap('basic.qos')        -> <<60:16, 10:16>>;
+emap('basic.qos.ok')     -> <<60:16, 11:16>>;
+emap('basic.consume')    -> <<60:16, 20:16>>;
+emap('basic.consume.ok') -> <<60:16, 21:16>>;
+emap('basic.cancel')     -> <<60:16, 30:16>>;
+emap('basic.cancel.ok')  -> <<60:16, 31:16>>;
+emap('basic.publish')    -> <<60:16, 40:16>>;
+emap('basic.return')     -> <<60:16, 50:16>>;
+emap('basic.deliver')    -> <<60:16, 60:16>>;
+emap('basic.get')        -> <<60:16, 70:16>>;
+emap('basic.get.ok')     -> <<60:16, 71:16>>;
+emap('basic.get.empty')  -> <<60:16, 72:16>>;
+emap('basic.ack')        -> <<60:16, 80:16>>;
+
+emap('basic.reject')        -> <<60:16, 90:16>>;
+emap('basic.recover.async') -> <<60:16, 100:16>>;
+emap('basic.recover')       -> <<60:16, 110:16>>;
+emap('basic.recover.ok')    -> <<60:16, 111:16>>;
 
 emap(_) -> invalid.
 
@@ -476,3 +479,26 @@ encode_method_params([{Type, Data}|Rest], Acc) ->
 	encode_method_params(Rest, <<Acc/binary, Result/binary>>).
 
 
+
+
+encode_method('channel.open', _) ->
+	Param=encode_prim(shortstr, ""),
+	Method=amqp_proto:emap('channel.open'),
+	<<Method/binary, Param/binary>>;
+
+%% Channel.close
+%% {"type": "short", "name": "reply-code"},
+%% {"type": "shortstr", "name": "reply-text", "default-value": ""}
+%% {"type": "short", "name": "class-id"}
+%% {"type": "short", "name": "method-id"}
+%%
+encode_method('channel.close', [ReplyCode, ReplyText, ClassId, MethodId]) ->
+	Method=amqp_proto:emap('channel.close'),
+	RC=encode_prim(short, ReplyCode),
+	RT=encode_prim(shortstr, ReplyText),
+	CID=encode_prim(short, ClassId),
+	MID=encode_prim(short, MethodId),
+	<<Method/binary, RC, RT/binary, CID, MID>>.
+	
+	
+	

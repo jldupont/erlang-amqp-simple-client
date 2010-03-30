@@ -167,7 +167,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Received "start" method ==> generate "start.ok" method
 %%
-handle_method(State, Channel, Size, 'connection.start'=Method, Payload) when State#state.cstate==wait.start ->
+handle_method(State, _Channel, _Size, 'connection.start'=Method, Payload) when State#state.cstate==wait.start ->
 	Result=amqp_proto:decode_method(Method, Payload),
 	error_logger:info_msg("Connection.start: ~p", [Result]),
 	Frame=frame_method(State, 'connection.start.ok'),
@@ -193,9 +193,14 @@ handle_method(State, _Channel, _Size, 'connection.tune'=Method, Payload) when St
 
 	State#state{cstate=wait.open.ok};
 
+handle_method(State, _Channel, _Size, 'connection.close'=Method, Payload) ->
+	Result=amqp_proto:decode_method(Method, Payload),
+	error_logger:info_msg("Connection.close: ~p", [Result]),
+	State#state{cstate=wait.start};
+	
 
-handle_method(State, Channel, Size, Method, Payload) ->
-	io:format("> conn, method: ~p~n", [Method]),
+handle_method(State, Channel, _Size, Method, _Payload) ->
+	error_logger:warning_msg("Connection.server: unexpected Method: ~p, Channel: ~p", [Method, Channel]),
 	State.
 
 	
@@ -234,9 +239,11 @@ frame_method(_State, 'connection.tune.ok') ->
 
 frame_method(State, 'connection.open') ->
 	Vhost=State#state.vhost,
-	VhostParam = amqp_proto:encode_prim(shortstr, Vhost),
+	%% need to account for the "deprecated" parameters (at least in version 0.9.1)
+	%% "capabilities", "insist"
+	Params=amqp_proto:encode_method_params([{shortstr, Vhost}, {shortstr, ""}, {octet, 1}]),
 	Method=amqp_proto:emap('connection.open'),
-	<<Method/binary, VhostParam/binary>>.
+	<<Method/binary, Params/binary>>.
 
 	
 

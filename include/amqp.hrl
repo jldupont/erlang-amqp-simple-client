@@ -6,8 +6,8 @@
 %%%
 %%%
 %%%
--define(PROTOCOL_VERSION_MAJOR, 9).
--define(PROTOCOL_VERSION_MINOR, 1).
+-define(PROTOCOL_VERSION_MAJOR, 8).
+-define(PROTOCOL_VERSION_MINOR, 0).
 -define(AMQP_TCP_OPTS, [binary, {packet, 0}, {active,false}, {nodelay, true}]).
 -define(PROTOCOL_HEADER,
         <<"AMQP", 1, 1, ?PROTOCOL_VERSION_MAJOR, ?PROTOCOL_VERSION_MINOR>>).
