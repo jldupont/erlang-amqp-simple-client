@@ -407,6 +407,12 @@ encode_prim(long, Long) ->
 encode_prim(short, Short) ->
 	<<Short:16>>;
 
+encode_prim(octet, true) ->
+	<<1:8>>;
+
+encode_prim(octet, false) ->
+	<<0:8>>;
+
 encode_prim(octet, Octet) ->
 	<<Octet:8>>;
 
@@ -512,12 +518,72 @@ encode_method('channel.close', [ReplyCode, ReplyText, ClassId, MethodId]) ->
 	MID=encode_prim(short, MethodId),
 	<<Method/binary, RC, RT/binary, CID, MID>>;
 
+%% arguments: void (0:32)
+%%
 encode_method(Method='exchange.declare', [Name, Type, Durable, AutoDelete, Internal, NoWait]) ->
 	MethodCode=amqp_proto:emap(Method),
 	Ticket=0,
 	Bits=amqp_proto:encode_bits([false, Durable, AutoDelete, Internal, NoWait]),
 	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, Name}, {shortstr, Type}, {octet, Bits}]),
-	<<MethodCode/binary, Params/binary, 0:32>>.
+	<<MethodCode/binary, Params/binary, 0:32>>;
+
+%% arguments: void (0:32)
+%%
+encode_method(Method='queue.bind', [Name, ExchangeName, RoutingKey, NoWait]) ->
+	MethodCode=amqp_proto:emap(Method),
+	Ticket=0,
+	Octet=amqp_proto:encode_prim(octet, NoWait),
+	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, Name}, {shortstr, ExchangeName}, {shortstr, RoutingKey}, {octet, Octet}]),
+	<<MethodCode/binary, Params/binary, 0:32>>;
 	
+
+encode_method(Method='basic.consume', [Queue, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait]) ->
+	MethodCode=amqp_proto:emap(Method),
+	Ticket=0,
+	Bits=amqp_proto:encode_bits([NoLocal, NoAck, Exclusive, NoWait]),
+	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, Queue}, 
+											{shortstr, ConsumerTag}, {octet, Bits}]),
+	<<MethodCode/binary, Params/binary>>;
 	
+
+
+encode_method(Method='connection.start.ok', [Username, Password]) ->
+	MethodCode=amqp_proto:emap(Method),
+	{ok, Cprops}=application:get_env(client.properties),
+	{ok, Mechanism}=application:get_env(default.login.method),
+	
+	<<_Size:32, LoginTable/binary>> =amqp_proto:encode_table([{"LOGIN", longstr, Username}, 
+															  {"PASSWORD", longstr, Password}]),
+	
+	{ok, Locale}=application:get_env(default.locale),
+	
+	Params=amqp_proto:encode_method_params([{table, Cprops}
+										   ,{shortstr, Mechanism}
+										   ,{longstr, erlang:binary_to_list(LoginTable)}
+										   ,{shortstr, Locale}
+										   ]),
+	<<MethodCode/binary, Params/binary>>;
+
+encode_method(Method='connection.tune.ok', _) ->
+	MethodCode=amqp_proto:emap(Method),
+	{ok, ChannelMax}=application:get_env(default.channel.max),
+	{ok, FrameMax}=application:get_env(default.frame.max),
+	{ok, Heartbeat}=application:get_env(default.heartbeat),
+	Params=amqp_proto:encode_method_params([{short, ChannelMax}
+										   ,{long, FrameMax}
+										   ,{short, Heartbeat}
+										   ]),
+	<<MethodCode/binary, Params/binary>>;
+
+
+encode_method(Method='connection.open', [Vhost]) ->
+	MethodCode=amqp_proto:emap(Method),
+	%% need to account for the "deprecated" parameters (at least in version 0.9.1)
+	%% "capabilities", "insist"
+	Params=amqp_proto:encode_method_params([{shortstr, Vhost}, {shortstr, ""}, {octet, 1}]),
+	<<MethodCode/binary, Params/binary>>.
+
+
+
+
 	

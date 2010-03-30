@@ -106,7 +106,7 @@ handle_call(_Request, _From, State) ->
 %%	Upon success, signal to Connection.Server
 %%	Upon failure, signal back to Client
 %%
-handle_cast({From=Client, open, [Address, Port], Opts}, State=#state{cstate=wait.open}) ->
+handle_cast({_From=Client, open, [Address, Port], Opts}, State=#state{cstate=wait.open}) ->
 	{ok, TcpOptions}=application:get_env(amqp.tcp.options),
 	case gen_tcp:connect(Address, Port, TcpOptions) of
 		{ok, Socket} ->
@@ -120,7 +120,8 @@ handle_cast({From=Client, open, [Address, Port], Opts}, State=#state{cstate=wait
 			gen_server:cast(Cserver, {ok, transport.open});
 		{error, Reason} ->
 			State2=State,
-			From ! {error, {'transport.open', Reason}}
+			Cserver=State#state.cserver,
+			gen_server:cast(Cserver, {error, {transport.open, Reason}})
 	end,
     {noreply, State2};
 

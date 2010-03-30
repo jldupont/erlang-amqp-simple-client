@@ -1,6 +1,13 @@
 %%% -------------------------------------------------------------------
 %%% Author  : jldupont
-%%% Description :
+%%% Description : AMQP Connection handling
+%%%
+%%% The protocol units that come in through the Transport server process
+%%% eventually come through here.  
+%%%
+%%% The protocol units destined to the Client are forwarded to the CC server
+%%% whilst the other protocol packets are decoded and analyzed here: most
+%%% and then forwarded to the API server.
 %%%
 %%% States:
 %%%		wait.start   : no connection established
@@ -93,6 +100,13 @@ handle_cast({ok, transport.ready}, State) ->
 
 %% Error in opening Transport socket
 %%
+handle_cast({error, {transport.open, Reason}}, State) ->
+	error_logger:error_msg("conn.server: error opening transport, reason: ~p", [Reason]),
+	{noreply, State#state{cstate=wait.start}};
+
+
+%% Error in opening Transport socket
+%%
 handle_cast({error, transport.closed}, State) ->
 	{noreply, State};
 
@@ -106,16 +120,19 @@ handle_cast({amqp.packet, ?TYPE_METHOD, 0, Size, <<ClassId:16, MethodId:16, Rest
 	{noreply, NewState};
 
 
+
+%%  Server-to-Client Management  &
 %%  Client-to-Client messaging
 %%
 %%  Send to CCMsg server
 %%
 handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
-	error_logger:info_msg("conn.server: handling Method(~p) on Channel(~p)", [Method, Channel]),	
-	CCMsgServer=State#state.ccserver,
-	gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Rest}),
-	{noreply, State};
+	error_logger:info_msg("conn.server: handling Client Method(~p) on Channel(~p)", [Method, Channel]),
+	NewState=handle_cmethod(State, {Channel, Size, Method, Rest}),
+	%CCMsgServer=State#state.ccserver,
+	%gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Rest}),
+	{noreply, NewState};
 
 handle_cast({amqp.packet, ?TYPE_HEADER, Channel, Size, Payload}, State) ->
 	Header=amqp_proto:decode_header(Payload),
@@ -169,53 +186,104 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 
 
+
+%% Channel.open.ok
+%%
+handle_cmethod(State, {Channel, _Size, 'channel.open.ok', _Payload}) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, {channel.open.ok, Channel}),
+	State;
+
+%% Exchange.declare.ok
+%%
+handle_cmethod(State, {Channel, _Size, 'exchange.declare.ok', _Payload}) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, {exchange.declare.ok, Channel}),
+	State;
+
+%% Queue.bind.ok
+%%
+handle_cmethod(State, {Channel, _Size, 'queue.bind.ok', _Payload}) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, {queue.bind.ok, Channel}),
+	State;
+
+%% Basic.consume.ok
+%%
+handle_cmethod(State, {Channel, _Size, 'basic.consume.ok', _Payload}) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, {basic.consume.ok, Channel}),
+	State;
+
+%% Basic.deliver
+%%
+handle_cmethod(State, {Channel, _Size, 'basic.deliver', Payload}) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, {basic.deliver, Channel, Payload}),
+	State;
+
+handle_cmethod(State, Msg) ->
+	error_logger:error_msg("conn.server:cmethod: unexpected msg: ~p", [Msg]),
+	State.
+
+
+%%% ------------------------------------------------------------------------- %%%
+%%% ------------------------------------------------------------------------- %%%
+%%% ------------------------------------------------------------------------- %%%
+
+
+
+
+%% Connection.start
+%%
 %% Received "start" method ==> generate "start.ok" method
 %%
 handle_method(State, _Channel, _Size, 'connection.start'=Method, Payload) when State#state.cstate==wait.start ->
 	Result=amqp_proto:decode_method(Method, Payload),
 	error_logger:info_msg("Connection.start: ~p", [Result]),
-	Frame=frame_method(State, 'connection.start.ok'),
+	Username=State#state.user,
+	Password=State#state.password,
+	Frame=amqp_proto:encode_method('connection.start.ok', [Username, Password]),
 	Wserver=State#state.wserver,
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, 0, Frame}),
 	State#state{cstate=wait.tune};
 
+%% Connection.start
+%%
 handle_method(State, _Channel, _Size, 'connection.start'=_Method, _Payload) ->
 	Tserver=State#state.tserver,
 	gen_server:cast(Tserver, {error, {amqp.proto.error, unexpected.start.method}}),
 	State#state{cstate=wait.start};
 
+%% Connection.tune
+%%
 handle_method(State, _Channel, _Size, 'connection.tune'=Method, Payload) when State#state.cstate==wait.tune ->
 	Result=amqp_proto:decode_method(Method, Payload),
 	error_logger:info_msg("Connection.tune: ~p", [Result]),
-	Frame=frame_method(State, 'connection.tune.ok'),
+	Frame=amqp_proto:encode_method('connection.tune.ok', []),
 	
 	Wserver=State#state.wserver,
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, 0, Frame}),
 	
-	FrameOpen=frame_method(State, 'connection.open'),
+	Vhost=State#state.vhost,
+	FrameOpen=amqp_proto:encode_method('connection.open', [Vhost]),
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, 0, FrameOpen}),
 
 	State#state{cstate=wait.open.ok};
 
+%% Connection.close
+%%
 handle_method(State, _Channel, _Size, 'connection.close'=Method, Payload) ->
 	Result=amqp_proto:decode_method(Method, Payload),
 	error_logger:info_msg("Connection.close: ~p", [Result]),
 	State#state{cstate=wait.start};
 	
 
+%% Connection.open.ok
+%%
 handle_method(State, _Channel, _Size, 'connection.open.ok', _Payload) ->
 	ApiServer=State#state.aserver,
 	gen_server:cast(ApiServer, connection.open.ok),
-	State;
-
-handle_method(State, _Channel, _Size, 'channel.open.ok', _Payload) ->
-	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, channel.open.ok),
-	State;
-
-handle_method(State, _Channel, _Size, 'exchange.declare.ok', _Payload) ->
-	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, exchange.declare.ok),
 	State;
 
 
@@ -227,43 +295,6 @@ handle_method(State, Channel, _Size, Method, _Payload) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-
-frame_method(State, 'connection.start.ok') ->
-	{ok, Cprops}=application:get_env(client.properties),
-	{ok, Mechanism}=application:get_env(default.login.method),
-	
-	<<_Size:32, LoginTable/binary>> =amqp_proto:encode_table([{"LOGIN", longstr, State#state.user}, 
-															  {"PASSWORD", longstr, State#state.password}]),
-	
-	{ok, Locale}=application:get_env(default.locale),
-	
-	Params=amqp_proto:encode_method_params([{table, Cprops}
-										   ,{shortstr, Mechanism}
-										   ,{longstr, erlang:binary_to_list(LoginTable)}
-										   ,{shortstr, Locale}
-										   ]),
-	Method=amqp_proto:emap('connection.start.ok'),
-	<<Method/binary, Params/binary>>;
-
-frame_method(_State, 'connection.tune.ok') ->
-	{ok, ChannelMax}=application:get_env(default.channel.max),
-	{ok, FrameMax}=application:get_env(default.frame.max),
-	{ok, Heartbeat}=application:get_env(default.heartbeat),
-	Params=amqp_proto:encode_method_params([{short, ChannelMax}
-										   ,{long, FrameMax}
-										   ,{short, Heartbeat}
-										   ]),
-	Method=amqp_proto:emap('connection.tune.ok'),
-	<<Method/binary, Params/binary>>;
-
-
-frame_method(State, 'connection.open') ->
-	Vhost=State#state.vhost,
-	%% need to account for the "deprecated" parameters (at least in version 0.9.1)
-	%% "capabilities", "insist"
-	Params=amqp_proto:encode_method_params([{shortstr, Vhost}, {shortstr, ""}, {octet, 1}]),
-	Method=amqp_proto:emap('connection.open'),
-	<<Method/binary, Params/binary>>.
 
 	
 

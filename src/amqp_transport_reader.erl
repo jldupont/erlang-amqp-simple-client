@@ -87,7 +87,7 @@ handle_cast({From, do.wait.header}, State=#state{cstate=wait.header}) ->
 	Socket=State#state.socket,
 	case gen_tcp:recv(Socket, ?FRAME_HEADER_LENGTH, ?TIMEOUT_WAIT_HEADER) of
 		{ok, FrameHeader} ->
-			io:format("> reader, header: ~p~n", [FrameHeader]),
+			%io:format("> reader, header: ~p~n", [FrameHeader]),
 			State2=State#state{cstate=wait.payload},
 			gen_server:cast(self(), {From, do.wait.payload, FrameHeader});
 		{error, timeout} ->
@@ -109,7 +109,7 @@ handle_cast({From, do.wait.header}, State=#state{cstate=wait.header}) ->
 %%	Upon network error, signal error to Transport.Server
 %%
 handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State=#state{cstate=wait.payload}) ->
-	io:format("> reader, wait.payload, type:~p  size:~p~n", [Type, Size]),
+	%io:format("> reader, wait.payload, type:~p  size:~p~n", [Type, Size]),
 	Socket=State#state.socket,
 	
 	case gen_tcp:recv(Socket, Size+1, ?TIMEOUT_WAIT_PAYLOAD) of

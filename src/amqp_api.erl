@@ -44,6 +44,8 @@
 -export([ 'conn.open'/0, 'conn.open'/5 
 		, 'chan.open'/1
 		, 'exchange.declare'/7
+		, 'queue.bind'/5
+		, 'basic.consume'/7
 		]).
 
 %% management functions
@@ -125,6 +127,70 @@
 	gen_server:cast(?SERVER, {self(), 'exchange.declare', Channel, [Name, EType, Durable, AutoDelete, Internal, NoWait]}).
 
 
+%% Queue.bind
+%%
+'queue.bind'(Channel, Name, ExchangeName, RoutingKey, NoWait) ->
+	case is_integer(Channel) of
+		true  -> ok;
+		false -> erlang:error({error, {invalid.parameter, channel, Channel}})
+	end,
+	case is_list(Name) of
+		true  -> ok;
+		false -> erlang:error({error, {invalid.parameter, name, Name}})
+	end,
+	case is_list(ExchangeName) of
+		true  -> ok;
+		false -> erlang:error({error, {invalid.parameter, exchange.name, ExchangeName}})
+	end,
+	case is_list(RoutingKey) of
+		true  -> ok;
+		false -> erlang:error({error, {invalid.parameter, routing.key, RoutingKey}})
+	end,
+	case NoWait of
+		true  -> ok;
+		false -> ok;
+		_     -> erlang:error({error, {invalid.parameter, nowait, NoWait}})
+	end,
+	gen_server:cast(?SERVER, {self(), 'queue.bind', Channel, [Name, ExchangeName, RoutingKey, NoWait]}).
+		
+%% Basic.consume
+%%
+%%
+'basic.consume'(Channel, Queue, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait) ->
+	case is_integer(Channel) of
+		true  -> ok;
+		false -> erlang:error({error, {invalid.parameter, channel, Channel}})
+	end,
+	case is_list(Queue) of
+		true  -> ok;
+		false -> erlang:error({error, {invalid.parameter, queue, Queue}})
+	end,
+	case is_list(ConsumerTag) of
+		true  -> ok;
+		false -> erlang:error({error, {invalid.parameter, consumer.tag, ConsumerTag}})
+	end,
+	case NoLocal of
+		true  -> ok;
+		false -> ok;
+		_     -> erlang:error({error, {invalid.parameter, no.local, NoLocal}})
+	end,
+	case NoAck of
+		true  -> ok;
+		false -> ok;
+		_     -> erlang:error({error, {invalid.parameter, no.ack, NoAck}})
+	end,
+	case Exclusive of
+		true  -> ok;
+		false -> ok;
+		_     -> erlang:error({error, {invalid.parameter, exclusive, Exclusive}})
+	end,
+	case NoWait of
+		true  -> ok;
+		false -> ok;
+		_     -> erlang:error({error, {invalid.parameter, nowait, NoWait}})
+	end,	
+	gen_server:cast(?SERVER, {self(), 'basic.consume', Channel, [Queue, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait]}).
+
 %% ====================================================================
 %% Management functions
 %% ====================================================================
@@ -199,9 +265,28 @@ handle_cast({_From, 'exchange.declare', Channel, Params}, State) ->
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
 	{noreply, State};
 
+%% Queue.bind
+%%
+handle_cast({_From, 'queue.bind', Channel, Params}, State) ->
+	Payload=amqp_proto:encode_method('queue.bind', Params),
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
+	{noreply, State};
+
+%% Basic.consume
+%%
+handle_cast({_From, Method='basic.consume', Channel, Params}, State) ->
+	Payload=amqp_proto:encode_method(Method, Params),
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
+	{noreply, State};	
+
+
 handle_cast(Msg, State) ->
 	error_logger:info_msg("api.server: unexpected msg: ~p", [Msg]),
     {noreply, State}.
+
+
 
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
