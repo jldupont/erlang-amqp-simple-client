@@ -83,7 +83,7 @@
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 'chan.open'(Ref) when is_integer(Ref) ->
-	gen_server:cast(?SERVER, {self(), 'open.chan', Ref});
+	gen_server:cast(?SERVER, {self(), 'chan.open', Ref});
 
 'chan.open'(Ref) ->
 	{error, {invalid.parameter, Ref}}.
@@ -91,7 +91,38 @@
 
 %'exchange.declare
 'exchange.declare'(Name, Type, Durable, AutoDelete, Internal, NoWait) ->
-	ok.
+	case is_list(Name) of
+		true -> ok;
+		_    -> erlang:error({error, {invalid.parameter, name, Name}})
+	end,
+	case Type of
+		direct -> ok;
+		fanout -> ok;
+		topic  -> ok;
+		_      -> erlang:error({error, {invalid.parameter, type, Type}})
+	end,
+	case Durable of
+		true  -> ok;
+		false -> ok;
+		_      -> erlang:error({error, {invalid.parameter, durable, Durable}})
+	end,
+	case AutoDelete of
+		true  -> ok;
+		false -> ok;
+		_      -> erlang:error({error, {invalid.parameter, auto.delete, AutoDelete}})
+	end,
+	case Internal of
+		true  -> ok;
+		false -> ok;
+		_      -> erlang:error({error, {invalid.parameter, internal, Internal}})
+	end,
+	case NoWait of
+		true  -> ok;
+		false -> ok;
+		_      -> erlang:error({error, {invalid.parameter, nowait, NoWait}})
+	end,	
+	gen_server:cast(?SERVER, {self(), 'exchange.declare', [Name, Type, Durable, AutoDelete, Internal, NoWait]}).
+
 
 %% ====================================================================
 %% Management functions
@@ -156,6 +187,9 @@ handle_cast({_From, 'chan.open', Ref}, State) ->
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Ref, MethodFrame}),
 	{noreply, State};
 
+
+handle_cast({_From, 'exchange.declare', [Name, Type, Durable, AutoDelete, Internal, NoWait]}, State) ->
+	{noreply, State};
 
 handle_cast(Msg, State) ->
 	error_logger:warning_msg("api.server: unexpected msg: ~p", [Msg]),
