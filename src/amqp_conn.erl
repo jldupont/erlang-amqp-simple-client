@@ -217,11 +217,13 @@ handle_cmethod(State, {Channel, _Size, 'basic.consume.ok', _Payload}) ->
 
 %% Basic.deliver
 %%
-handle_cmethod(State, {Channel, _Size, 'basic.deliver', Payload}) ->
+handle_cmethod(State, {Channel, _Size, Method='basic.deliver', Payload}) ->
+	Decoded=amqp_proto:decode_method(Method, Payload),
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {basic.deliver, Channel, Payload}),
+	gen_server:cast(ApiServer, {basic.deliver, Channel, Decoded}),
 	State;
 
+%%% CATCH-ALL %%%
 handle_cmethod(State, Msg) ->
 	error_logger:error_msg("conn.server:cmethod: unexpected msg: ~p", [Msg]),
 	State.
