@@ -38,16 +38,16 @@
 %%
 %% API Functions
 %%
-imap(?CONNECTION, ?START) ->	 'connection.start';
-imap(?CONNECTION, ?START_OK) ->	 'connection.start.ok';
-imap(?CONNECTION, ?SECURE) ->	 'connection.secure';
-imap(?CONNECTION, ?SECURE_OK) -> 'connection.secure.ok';
-imap(?CONNECTION, ?TUNE) ->	     'connection.tune';
-imap(?CONNECTION, ?TUNE_OK) ->   'connection.tune.ok';
-imap(?CONNECTION, ?OPEN) ->      'connection.open';
-imap(?CONNECTION, ?OPEN_OK) ->   'connection.open.ok';
-imap(?CONNECTION, ?CLOSE) ->     'connection.close';
-imap(?CONNECTION, ?CLOSE_OK) ->  'connection.close.ok';
+imap(?CONNECTION, 10) -> 'connection.start';
+imap(?CONNECTION, 11) -> 'connection.start.ok';
+imap(?CONNECTION, 20) -> 'connection.secure';
+imap(?CONNECTION, 21) -> 'connection.secure.ok';
+imap(?CONNECTION, 30) -> 'connection.tune';
+imap(?CONNECTION, 31) -> 'connection.tune.ok';
+imap(?CONNECTION, 40) -> 'connection.open';
+imap(?CONNECTION, 41) -> 'connection.open.ok';
+imap(?CONNECTION, 60) -> 'connection.close';
+imap(?CONNECTION, 61) -> 'connection.close.ok';
 
 imap(?CHANNEL, 10) ->    'channel.open';
 imap(?CHANNEL, 11) ->	 'channel.open.ok';
@@ -90,7 +90,7 @@ imap(?BASIC, 100) -> 'basic.recover.async';
 imap(?BASIC, 110) -> 'basic.recover';
 imap(?BASIC, 111) -> 'basic.recover.ok';
 
-imap(_, _) -> invalid.
+imap(ClassId, MethodId) -> {invalid, ClassId, MethodId}.
 
 
 emap('connection.start')    -> <<10:16, 10:16>>;
@@ -146,7 +146,7 @@ emap('basic.recover.async') -> <<60:16, 100:16>>;
 emap('basic.recover')       -> <<60:16, 110:16>>;
 emap('basic.recover.ok')    -> <<60:16, 111:16>>;
 
-emap(_) -> invalid.
+emap(Method) -> {invalid, Method}.
 
 
 decode_method('connection.start', <<VersionMajor:8, VersionMinor:8, Rest/binary>>) ->
@@ -423,6 +423,18 @@ encode_bit(Byte, Pos, _) when Byte =< 255, Pos =< 7 ->
 	Byte band ClearBit.
 
 
+encode_bits(Bits) ->
+	encode_bits(Bits, 0, 0).
+
+encode_bits([], _Pos, Bits) ->
+	Bits;
+
+encode_bits([Bit|Rest], Pos, Bits) ->
+	Result= encode_bit(Bits, Pos, Bit),
+	encode_bits(Rest, Pos+1, Result).
+
+
+
 %% Encodes a "table" compound data-type
 %%
 %%  Each element of the table must have the form:
@@ -498,7 +510,14 @@ encode_method('channel.close', [ReplyCode, ReplyText, ClassId, MethodId]) ->
 	RT=encode_prim(shortstr, ReplyText),
 	CID=encode_prim(short, ClassId),
 	MID=encode_prim(short, MethodId),
-	<<Method/binary, RC, RT/binary, CID, MID>>.
+	<<Method/binary, RC, RT/binary, CID, MID>>;
+
+encode_method(Method='exchange.declare', [Name, Type, Durable, AutoDelete, Internal, NoWait]) ->
+	MethodCode=amqp_proto:emap(Method),
+	Ticket=0,
+	Bits=amqp_proto:encode_bits([false, Durable, AutoDelete, Internal, NoWait]),
+	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, Name}, {shortstr, Type}, {octet, Bits}]),
+	<<MethodCode/binary, Params/binary, 0:32>>.
 	
 	
 	

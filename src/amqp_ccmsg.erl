@@ -102,7 +102,8 @@ handle_cast({pkt, header, Channel, Size, Header}, State) ->
 handle_cast({pkt, body, Channel, Size, Payload}, State) ->
 	{noreply, State};
 
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+	error_logger:info_msg("cc.server: unexpected msg: ~p", [Msg]),
     {noreply, State}.
 
  

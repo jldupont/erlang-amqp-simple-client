@@ -92,9 +92,10 @@ conn_spec() ->
 	WriterServer=getpar(transport.writer.server),
 	ConnServer=getpar(conn.server),
 	CCMsgServer=getpar(ccmsg.server),
+	ApiServer=getpar(api.server),
 	
     Name = amqp_conn,
-    StartFunc = {amqp_conn, start_link, [[ConnServer, TransportServer, WriterServer, CCMsgServer]]},
+    StartFunc = {amqp_conn, start_link, [[ConnServer, TransportServer, WriterServer, CCMsgServer, ApiServer]]},
     Restart = permanent, 
     Shutdown = brutal_kill,
     Modules = [amqp_conn],

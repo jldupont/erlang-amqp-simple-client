@@ -43,7 +43,7 @@
 %% External exports
 -export([ 'conn.open'/0, 'conn.open'/5 
 		, 'chan.open'/1
-		, 'exchange.declare'/6
+		, 'exchange.declare'/7
 		]).
 
 %% management functions
@@ -90,7 +90,7 @@
 
 
 %'exchange.declare
-'exchange.declare'(Name, Type, Durable, AutoDelete, Internal, NoWait) ->
+'exchange.declare'(Channel, Name, Type, Durable, AutoDelete, Internal, NoWait) ->
 	case is_list(Name) of
 		true -> ok;
 		_    -> erlang:error({error, {invalid.parameter, name, Name}})
@@ -121,7 +121,8 @@
 		false -> ok;
 		_      -> erlang:error({error, {invalid.parameter, nowait, NoWait}})
 	end,	
-	gen_server:cast(?SERVER, {self(), 'exchange.declare', [Name, Type, Durable, AutoDelete, Internal, NoWait]}).
+	EType=erlang:atom_to_list(Type),
+	gen_server:cast(?SERVER, {self(), 'exchange.declare', Channel, [Name, EType, Durable, AutoDelete, Internal, NoWait]}).
 
 
 %% ====================================================================
@@ -187,12 +188,19 @@ handle_cast({_From, 'chan.open', Ref}, State) ->
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Ref, MethodFrame}),
 	{noreply, State};
 
-
-handle_cast({_From, 'exchange.declare', [Name, Type, Durable, AutoDelete, Internal, NoWait]}, State) ->
+%% Exchange.Declare
+%%
+%%  Access ticket: 0 (default)
+%%  Passive: false
+%%
+handle_cast({_From, 'exchange.declare', Channel, Params}, State) ->
+	Payload=amqp_proto:encode_method('exchange.declare', Params),
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
 	{noreply, State};
 
 handle_cast(Msg, State) ->
-	error_logger:warning_msg("api.server: unexpected msg: ~p", [Msg]),
+	error_logger:info_msg("api.server: unexpected msg: ~p", [Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

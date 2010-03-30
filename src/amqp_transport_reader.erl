@@ -91,7 +91,7 @@ handle_cast({From, do.wait.header}, State=#state{cstate=wait.header}) ->
 			State2=State#state{cstate=wait.payload},
 			gen_server:cast(self(), {From, do.wait.payload, FrameHeader});
 		{error, timeout} ->
-			io:format("> reader/header, timeout~n"),
+			%io:format("> reader/header, timeout~n"),
 			State2=State,
 			gen_server:cast(self(), {From, do.wait.header});
 		{error, Reason} ->

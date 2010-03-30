@@ -26,14 +26,14 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate, server, tserver, wserver, ccserver,
+-record(state, {cstate, server, tserver, wserver, ccserver, aserver,
 				user, password, vhost}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
-start_link([Server, TransportServer, WriterServer, CCMsgServer]) ->
-	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, WriterServer, CCMsgServer], []).
+start_link([Server, TransportServer, WriterServer, CCMsgServer, ApiServer]) ->
+	gen_server:start_link({local, Server}, ?MODULE, [Server, TransportServer, WriterServer, CCMsgServer, ApiServer], []).
 
 %% ====================================================================
 %% Server functions
@@ -47,8 +47,10 @@ start_link([Server, TransportServer, WriterServer, CCMsgServer]) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([Server, TransportServer, WriterServer, CCMsgServer]) ->
-    {ok, #state{cstate=wait.start, server=Server, tserver=TransportServer, wserver=WriterServer, ccserver=CCMsgServer}}.
+init([Server, TransportServer, WriterServer, CCMsgServer, ApiServer]) ->
+    {ok, #state{cstate=wait.start, server=Server, 
+				tserver=TransportServer, wserver=WriterServer, 
+				ccserver=CCMsgServer, aserver=ApiServer}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -99,6 +101,7 @@ handle_cast({error, transport.closed}, State) ->
 %%
 handle_cast({amqp.packet, ?TYPE_METHOD, 0, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
+	error_logger:info_msg("conn.server: handling Method(~p)", [Method]),
 	NewState=handle_method(State, 0, Size, Method, Rest),
 	{noreply, NewState};
 
@@ -109,6 +112,7 @@ handle_cast({amqp.packet, ?TYPE_METHOD, 0, Size, <<ClassId:16, MethodId:16, Rest
 %%
 handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
+	error_logger:info_msg("conn.server: handling Method(~p) on Channel(~p)", [Method, Channel]),	
 	CCMsgServer=State#state.ccserver,
 	gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Rest}),
 	{noreply, State};
@@ -198,6 +202,22 @@ handle_method(State, _Channel, _Size, 'connection.close'=Method, Payload) ->
 	error_logger:info_msg("Connection.close: ~p", [Result]),
 	State#state{cstate=wait.start};
 	
+
+handle_method(State, _Channel, _Size, 'connection.open.ok', _Payload) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, connection.open.ok),
+	State;
+
+handle_method(State, _Channel, _Size, 'channel.open.ok', _Payload) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, channel.open.ok),
+	State;
+
+handle_method(State, _Channel, _Size, 'exchange.declare.ok', _Payload) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, exchange.declare.ok),
+	State;
+
 
 handle_method(State, Channel, _Size, Method, _Payload) ->
 	error_logger:warning_msg("Connection.server: unexpected Method: ~p, Channel: ~p", [Method, Channel]),
