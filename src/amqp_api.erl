@@ -45,6 +45,7 @@
 		, 'chan.open'/1
 		, 'exchange.declare'/7
 		, 'queue.declare'/7
+		, 'queue.delete'/5
 		, 'queue.bind'/5
 		, 'basic.consume'/7
 		]).
@@ -109,8 +110,16 @@
 						   [{int, channel}, {string, queue.name}, 
 							{bool, passive}, {bool, durable}, {bool, exclusive}, {bool, auto.delete},
 							{bool, no.wait}]),
-	gen_server:cast(?SERVER, {self(), 'queue.bind', Channel, [QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait]}).
+	gen_server:cast(?SERVER, {self(), 'queue.declare', Channel, [QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait]}).
 
+%% Queue.delete
+%%
+'queue.delete'(Channel, QueueName, IfUnused, IfEmpty, NoWait) ->
+	amqp_misc:check_params([Channel, QueueName, IfUnused, IfEmpty, NoWait], 
+						   [{int, channel}, {string, queue.name}, 
+							{bool, 'if.unused'}, {bool, 'if.empty'}, {bool, no.wait}]),
+	gen_server:cast(?SERVER, {self(), 'queue.delete', Channel, [QueueName, IfUnused, IfEmpty, NoWait]}).
+	
 
 %% Queue.bind
 %%
@@ -192,39 +201,13 @@ handle_cast({_From, 'chan.open', Ref}, State) ->
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Ref, MethodFrame}),
 	{noreply, State};
 
-%% Exchange.Declare
+%% All methods
 %%
-%%  Access ticket: 0 (default)
-%%  Passive: false
-%%
-handle_cast({_From, 'exchange.declare', Channel, Params}, State) ->
-	Payload=amqp_proto:encode_method('exchange.declare', Params),
-	Wserver=State#state.wserver,
-	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
-	{noreply, State};
-
-handle_cast({_From, Method='queue.declare', Channel, Params}, State) ->
+handle_cast({_From, Method, Channel, Params}, State) ->
 	Payload=amqp_proto:encode_method(Method, Params),
 	Wserver=State#state.wserver,
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
 	{noreply, State};
-
-
-%% Queue.bind
-%%
-handle_cast({_From, 'queue.bind', Channel, Params}, State) ->
-	Payload=amqp_proto:encode_method('queue.bind', Params),
-	Wserver=State#state.wserver,
-	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
-	{noreply, State};
-
-%% Basic.consume
-%%
-handle_cast({_From, Method='basic.consume', Channel, Params}, State) ->
-	Payload=amqp_proto:encode_method(Method, Params),
-	Wserver=State#state.wserver,
-	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
-	{noreply, State};	
 
 
 handle_cast(Msg, State) ->

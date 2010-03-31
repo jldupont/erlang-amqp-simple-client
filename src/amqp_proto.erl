@@ -413,6 +413,9 @@ encode_prim(octet, true) ->
 encode_prim(octet, false) ->
 	<<0:8>>;
 
+encode_prim(octet, <<Octet:8>>) ->
+	<<Octet:8>>;
+
 encode_prim(octet, Octet) ->
 	<<Octet:8>>;
 
@@ -499,6 +502,13 @@ encode_method_params([{Type, Data}|Rest], Acc) ->
 
 
 
+%% ---------------------------------------------------------------------------------- %%
+%% ---------------------------------------------------------------------------------- %%
+%% ---------------------------------------------------------------------------------- %%
+
+
+
+
 encode_method('channel.open', _) ->
 	Param=encode_prim(shortstr, ""),
 	Method=amqp_proto:emap('channel.open'),
@@ -518,6 +528,8 @@ encode_method('channel.close', [ReplyCode, ReplyText, ClassId, MethodId]) ->
 	MID=encode_prim(short, MethodId),
 	<<Method/binary, RC, RT/binary, CID, MID>>;
 
+%% exchange.declare
+%%
 %% arguments: void (0:32)
 %%
 encode_method(Method='exchange.declare', [Name, Type, Durable, AutoDelete, Internal, NoWait]) ->
@@ -537,18 +549,32 @@ encode_method(Method='queue.declare', [QueueName, Passive, Durable, Exclusive, A
 	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, QueueName}, {octet, Bits}]),
 	<<MethodCode/binary, Params/binary, 0:32>>;
 
+%% queue.delete
+%%
+encode_method(Method='queue.delete', [QueueName, IfUnused, IfEmpty, NoWait]) ->
+	MethodCode=amqp_proto:emap(Method),
+	Ticket=0,
+	Bits=amqp_proto:encode_bits([IfUnused, IfEmpty, NoWait]),
+	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, QueueName}, {octet, Bits}]),
+	<<MethodCode/binary, Params/binary>>;
 
 
+%% queue.bind
+%%
 %% arguments: void (0:32)
 %%
 encode_method(Method='queue.bind', [Name, ExchangeName, RoutingKey, NoWait]) ->
+	io:format("encode_method:queue.bind: Name: ~p  Exch:~p Rk: ~p  NoWait:~p~n", [Name, ExchangeName, RoutingKey, NoWait]),
 	MethodCode=amqp_proto:emap(Method),
 	Ticket=0,
 	Octet=amqp_proto:encode_prim(octet, NoWait),
-	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, Name}, {shortstr, ExchangeName}, {shortstr, RoutingKey}, {octet, Octet}]),
+	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, Name}, {shortstr, ExchangeName}, 
+											{shortstr, RoutingKey}, {octet, Octet}]),
 	<<MethodCode/binary, Params/binary, 0:32>>;
 	
 
+%% basic.consume
+%%
 encode_method(Method='basic.consume', [Queue, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait]) ->
 	MethodCode=amqp_proto:emap(Method),
 	Ticket=0,
@@ -558,7 +584,8 @@ encode_method(Method='basic.consume', [Queue, ConsumerTag, NoLocal, NoAck, Exclu
 	<<MethodCode/binary, Params/binary>>;
 	
 
-
+%% connection.start.ok
+%%
 encode_method(Method='connection.start.ok', [Username, Password]) ->
 	MethodCode=amqp_proto:emap(Method),
 	{ok, Cprops}=application:get_env(client.properties),
@@ -576,6 +603,8 @@ encode_method(Method='connection.start.ok', [Username, Password]) ->
 										   ]),
 	<<MethodCode/binary, Params/binary>>;
 
+%% connection.tune.ok
+%%
 encode_method(Method='connection.tune.ok', _) ->
 	MethodCode=amqp_proto:emap(Method),
 	{ok, ChannelMax}=application:get_env(default.channel.max),
@@ -587,7 +616,8 @@ encode_method(Method='connection.tune.ok', _) ->
 										   ]),
 	<<MethodCode/binary, Params/binary>>;
 
-
+%% connection.open
+%%
 encode_method(Method='connection.open', [Vhost]) ->
 	MethodCode=amqp_proto:emap(Method),
 	%% need to account for the "deprecated" parameters (at least in version 0.9.1)

@@ -221,6 +221,14 @@ handle_cmethod(State, {Channel, Size, Method='basic.deliver', Payload}) ->
 	gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Decoded}),
 	State;
 
+%% Channel.close
+handle_cmethod(State, {Channel, Size, Method='channel.close', Payload}) ->
+	Decoded=amqp_proto:decode_method(Method, Payload),
+	CCMsgServer=State#state.ccserver,
+	gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Decoded}),
+	State;
+
+
 %%% CATCH-ALL %%%
 handle_cmethod(State, Msg) ->
 	error_logger:error_msg("conn.server:cmethod: unexpected msg: ~p", [Msg]),
