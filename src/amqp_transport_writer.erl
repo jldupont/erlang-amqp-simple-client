@@ -70,6 +70,13 @@ handle_call(_Request, _From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 
+%% When the Transport server detects that the connection is down,
+%%  quicker convergence on this server.
+%%
+handle_cast(close, State) ->
+	{noreply, State#state{cstate=wait.socket}};
+
+
 %% Message from Transport.Server
 %%  
 %% Upon Success/Failure, signal back to Transport.Server

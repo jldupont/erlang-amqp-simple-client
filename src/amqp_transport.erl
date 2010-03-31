@@ -125,13 +125,19 @@ handle_cast({_From=Client, open, [Address, Port], Opts}, State=#state{cstate=wai
 	end,
     {noreply, State2};
 
-handle_cast({From, open, _Host, _Port}, State) ->
-	From ! {error, 'transport.already.active'},
+handle_cast({_From, open, _Host, _Port}, State) ->
+	Cserver=State#state.cserver,
+	gen_server:cast(Cserver, {ok, {transport, already.active}}),
     {noreply, State};
 
 handle_cast({ok, 'transport.writer.send.protocol.start.header'}, State) ->
 	Cserver=State#state.cserver,
 	gen_server:cast(Cserver, {ok, {transport, ready}}),
+	{noreply, State};
+
+handle_cast(Msg={error, {transport.writer.send, unexpected.pkt}}, State) ->
+	Cserver=State#state.cserver,
+	gen_server:cast(Cserver, Msg),
 	{noreply, State};
 
 
@@ -190,6 +196,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 do_close(State, Reason) ->
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, close),
+	
 	ConnServer=State#state.cserver,
 	gen_server:cast(ConnServer, {error, {transport.closed, Reason}}),
 	

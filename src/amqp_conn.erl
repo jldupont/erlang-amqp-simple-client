@@ -89,6 +89,11 @@ handle_cast({ok, {transport, ready}}, State) ->
 	gen_server:cast(Aserver, {ok, {transport, ready}}),	
 	{noreply, State};
 
+handle_cast(Msg={ok, {transport, already.active}}, State) ->
+	Aserver=State#state.aserver,
+	gen_server:cast(Aserver, Msg),	
+	{noreply, State};
+
 %% Error in opening Transport socket
 %%
 handle_cast({error, {transport.open, Reason}}, State) ->
@@ -104,6 +109,14 @@ handle_cast({error, {transport.closed, Reason}}, State) ->
 	error_logger:error_msg("conn.server: transport closed, Reason:~p~n", [Reason]),
 	Aserver=State#state.aserver,
 	gen_server:cast(Aserver, {error, {transport.closed, Reason}}),			
+	{noreply, State#state{cstate=wait.start}};
+
+%% Error - probably related to the Client trying to access
+%% the broker without having a valid Connection active.
+%%
+handle_cast({error, {transport.writer.send, unexpected.pkt}}, State) ->
+	Aserver=State#state.aserver,
+	gen_server:cast(Aserver, {error, {connection, 'not.active'}}),		
 	{noreply, State#state{cstate=wait.start}};
 
 %%  AMQP Management Protocol  (channel==0)
@@ -190,35 +203,35 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 handle_cmethod(State, {Channel, _Size, 'channel.open.ok', _Payload}) ->
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {channel.open.ok, Channel}),
+	gen_server:cast(ApiServer, {ok, {channel, {open, Channel}}}),
 	State;
 
 %% Exchange.declare.ok
 %%
 handle_cmethod(State, {Channel, _Size, 'exchange.declare.ok', _Payload}) ->
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {exchange.declare.ok, Channel}),
+	gen_server:cast(ApiServer, {ok, {exchange, {declare, Channel}}}),
 	State;
 
 %% Queue.delete.ok
 %%
-handle_cmethod(State, {Channel, _Size, Method='queue.delete.ok', _Payload}) ->
+handle_cmethod(State, {Channel, _Size, 'queue.delete.ok', _Payload}) ->
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {Method, Channel}),
+	gen_server:cast(ApiServer, {ok, {queue, {delete, Channel}}}),
 	State;
 
 %% Queue.bind.ok
 %%
 handle_cmethod(State, {Channel, _Size, 'queue.bind.ok', _Payload}) ->
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {queue.bind.ok, Channel}),
+	gen_server:cast(ApiServer, {ok, {queue, {bind, Channel}}}),
 	State;
 
 %% Basic.consume.ok
 %%
 handle_cmethod(State, {Channel, _Size, 'basic.consume.ok', _Payload}) ->
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {basic.consume.ok, Channel}),
+	gen_server:cast(ApiServer, {ok, {basic, {consume, Channel}}}),
 	State;
 
 %% Basic.deliver
@@ -295,7 +308,7 @@ handle_method(State, _Channel, _Size, 'connection.close'=Method, Payload) ->
 	Result=amqp_proto:decode_method(Method, Payload),
 	error_logger:info_msg("Connection.close: ~p", [Result]),
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {error, {connection, close, Result}}),
+	gen_server:cast(ApiServer, {error, {connection, {close, Result}}}),
 	State#state{cstate=wait.start};
 	
 
@@ -303,7 +316,7 @@ handle_method(State, _Channel, _Size, 'connection.close'=Method, Payload) ->
 %%
 handle_method(State, _Channel, _Size, 'connection.open.ok', _Payload) ->
 	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, connection.open.ok),
+	gen_server:cast(ApiServer, {ok, {connection, open}}),
 	State;
 
 

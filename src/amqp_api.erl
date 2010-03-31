@@ -15,9 +15,18 @@
 %%%
 %%% {ok, {transport, open}}
 %%% {ok, {transport, ready}}
+%%% {ok, {transport, already.active}}
+%%% {ok, {connection, open}}
+%%% {ok, {channel, {open, Channel}}}
+%%% {ok, {exchange, {declare, Channel}}}
+%%% {ok, {queue, {delete, Channel}}}
+%%% {ok, {queue, {bind, Channel}}}
+%%% {ok, {basic, {consume, Channel}}}
+%%%
+%%% {error, {connection, 'not.active'}}
+%%% {error, {connection, {close, Details}}}
 %%% {error, {transport.open, Reason}}
 %%% {error, {transport.closed, Reason}}
-%%%
 %%%
 %%%
 %%%
