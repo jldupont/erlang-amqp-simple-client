@@ -279,7 +279,7 @@ decode_method(_, _) ->
 
 
 decode_header(<<ClassId:16, Weight:16, BodySize:64, Properties/binary>>) ->
-	[{class.id, ClassId, weight, Weight, body.size, BodySize, properties, Properties}];
+	{ClassId, Weight, BodySize, Properties};
 
 decode_header(_) ->
 	undefined.

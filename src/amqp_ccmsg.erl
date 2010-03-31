@@ -73,15 +73,20 @@ handle_cast(reset, State) ->
 
 handle_cast({pkt, method, Channel, Size, 'basic.deliver', Rest}, State) ->
 	put({Channel, state}, {start, basic.deliver}),
+	%% reset any previsouly received Header
+	put({Channel, header}, undefined),
+	%% reset any previsouly received Body
+	put({Channel, body}, undefined),
 	{noreply, State};
 
-handle_cast({pkt, method, Channel, Size, 'basic.return', Rest}, State) ->
-	put({Channel, state}, {start, basic.return}),
-	{noreply, State};
+%handle_cast({pkt, method, Channel, Size, 'basic.return', Rest}, State) ->
+%	put({Channel, state}, {start, basic.return}),
+%	{noreply, State};
 
-handle_cast({pkt, method, Channel, Size, 'basic.get.ok', Rest}, State) ->
-	put({Channel, state}, {start, basic.get.ok}),
-	{noreply, State};
+%handle_cast({pkt, method, Channel, Size, 'basic.get.ok', Rest}, State) ->
+%	put({Channel, state}, {start, basic.get.ok}),
+%	{noreply, State};
+
 
 %% Drop other Method messages
 %%
@@ -95,11 +100,20 @@ handle_cast({pkt, method, _Channel, _Size, _, _Rest}, State) ->
 %% Store the Header part of the message for delivery when
 %%	the complete message gets here
 %%
-handle_cast({pkt, header, Channel, Size, Header}, State) ->
+handle_cast({pkt, header, Channel, _Size, Header}, State) ->
 	put({Channel, header}, Header),
+	%io:format("cc.server: header: ~p~n", [Header]),
 	{noreply, State};
 
 handle_cast({pkt, body, Channel, Size, Payload}, State) ->
+	%io:format("cc.server: body: ~p~n", [Payload]),
+	Header=get({Channel, header}),
+	case Header of
+		undefined -> 
+			error_logger:warning_msg("cc.server: received Body frame but can't find Header context for Channel(~p)", [Channel]);
+		{_, _, BodySize, _} ->
+			handle_body(State, Channel, Size, BodySize, Payload)
+	end,
 	{noreply, State};
 
 handle_cast(Msg, State) ->
@@ -136,3 +150,21 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
+handle_body(State, Channel, Size, BodySize, Payload) ->
+	BodyData=get({Channel, body}),
+	{CurrentSize, Data}=case BodyData of
+		undefined -> {0, <<>>};
+		_         -> BodyData
+	end,
+	NewSize=CurrentSize+Size,
+	NewData= <<Data/binary, Payload:Size/binary>>,
+	NewBodyData={NewSize, NewData},
+	%io:format("handle_body: Size: ~p CurrentSize: ~p  NewSize:~p~n", [Size, CurrentSize, NewSize]),
+	case NewSize==BodySize of
+		false -> 
+				put({Channel, body}, NewBodyData);
+		true  -> 
+			put({Channel, header}, undefined),
+			put({Channel, body},   undefined),
+			io:format("cc.server: packet: ~p~n", [NewBodyData])
+	end.

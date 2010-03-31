@@ -101,7 +101,7 @@ handle_cast({ok, transport.ready}, State) ->
 %% Error in opening Transport socket
 %%
 handle_cast({error, {transport.open, Reason}}, State) ->
-	error_logger:error_msg("conn.server: error opening transport, reason: ~p", [Reason]),
+	error_logger:error_msg("conn.server: error opening transport, reason: ~p~n", [Reason]),
 	{noreply, State#state{cstate=wait.start}};
 
 
@@ -115,7 +115,7 @@ handle_cast({error, transport.closed}, State) ->
 %%
 handle_cast({amqp.packet, ?TYPE_METHOD, 0, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
-	error_logger:info_msg("conn.server: handling Method(~p)", [Method]),
+	error_logger:info_msg("conn.server: handling Method(~p)~n", [Method]),
 	NewState=handle_method(State, 0, Size, Method, Rest),
 	{noreply, NewState};
 
@@ -128,7 +128,7 @@ handle_cast({amqp.packet, ?TYPE_METHOD, 0, Size, <<ClassId:16, MethodId:16, Rest
 %%
 handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
-	error_logger:info_msg("conn.server: handling Client Method(~p) on Channel(~p)", [Method, Channel]),
+	%error_logger:info_msg("conn.server: handling Client Method(~p) on Channel(~p)~n", [Method, Channel]),
 	NewState=handle_cmethod(State, {Channel, Size, Method, Rest}),
 	%CCMsgServer=State#state.ccserver,
 	%gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Rest}),
@@ -217,10 +217,10 @@ handle_cmethod(State, {Channel, _Size, 'basic.consume.ok', _Payload}) ->
 
 %% Basic.deliver
 %%
-handle_cmethod(State, {Channel, _Size, Method='basic.deliver', Payload}) ->
+handle_cmethod(State, {Channel, Size, Method='basic.deliver', Payload}) ->
 	Decoded=amqp_proto:decode_method(Method, Payload),
-	ApiServer=State#state.aserver,
-	gen_server:cast(ApiServer, {basic.deliver, Channel, Decoded}),
+	CCMsgServer=State#state.ccserver,
+	gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Decoded}),
 	State;
 
 %%% CATCH-ALL %%%
