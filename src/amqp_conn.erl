@@ -60,20 +60,6 @@ init([Server, TransportServer, WriterServer, CCMsgServer, ApiServer]) ->
 				ccserver=CCMsgServer, aserver=ApiServer}}.
 
 %% --------------------------------------------------------------------
-%% Function: handle_call/3
-%% Description: Handling call messages
-%% Returns: {reply, Reply, State}          |
-%%          {reply, Reply, State, Timeout} |
-%%          {noreply, State}               |
-%%          {noreply, State, Timeout}      |
-%%          {stop, Reason, Reply, State}   | (terminate/2 is called)
-%%          {stop, Reason, State}            (terminate/2 is called)
-%% --------------------------------------------------------------------
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
-
-%% --------------------------------------------------------------------
 %% Function: handle_cast/2
 %% Description: Handling cast messages
 %% Returns: {noreply, State}          |
@@ -88,34 +74,44 @@ handle_cast({conn.params, Username, Password, Vhost}, State) ->
 %%
 %%  Signal the C-to-C messaging agent to reset
 %%
-handle_cast({ok, transport.open}, State) ->
+handle_cast({ok, {transport, open}}, State) ->
 	CCServer=State#state.ccserver,
 	gen_server:cast(CCServer, reset),
+	
+	Aserver=State#state.aserver,
+	gen_server:cast(Aserver, {ok, {transport, open}}),
 	{noreply, State};
 
 %% Success in sending initial Protocol Header to AMQP server
 %%
-handle_cast({ok, transport.ready}, State) ->
+handle_cast({ok, {transport, ready}}, State) ->
+	Aserver=State#state.aserver,
+	gen_server:cast(Aserver, {ok, {transport, ready}}),	
 	{noreply, State};
 
 %% Error in opening Transport socket
 %%
 handle_cast({error, {transport.open, Reason}}, State) ->
 	error_logger:error_msg("conn.server: error opening transport, reason: ~p~n", [Reason]),
+	Aserver=State#state.aserver,
+	gen_server:cast(Aserver, {error, {transport.open, Reason}}),		
 	{noreply, State#state{cstate=wait.start}};
 
 
 %% Error in opening Transport socket
 %%
-handle_cast({error, transport.closed}, State) ->
-	{noreply, State};
+handle_cast({error, {transport.closed, Reason}}, State) ->
+	error_logger:error_msg("conn.server: transport closed, Reason:~p~n", [Reason]),
+	Aserver=State#state.aserver,
+	gen_server:cast(Aserver, {error, {transport.closed, Reason}}),			
+	{noreply, State#state{cstate=wait.start}};
 
 %%  AMQP Management Protocol  (channel==0)
 %%
 %%
 handle_cast({amqp.packet, ?TYPE_METHOD, 0, Size, <<ClassId:16, MethodId:16, Rest/binary>>}, State) ->
 	Method=amqp_proto:imap(ClassId, MethodId),
-	error_logger:info_msg("conn.server: handling Method(~p)~n", [Method]),
+	%%error_logger:info_msg("conn.server: handling Method(~p)~n", [Method]),
 	NewState=handle_method(State, 0, Size, Method, Rest),
 	{noreply, NewState};
 
@@ -147,8 +143,13 @@ handle_cast({amqp.packet, ?TYPE_BODY, Channel, Size, Payload}, State) ->
 %%%%%%%%%%%%%%%%%% CATCH-ALL %%%%%%%%%%%%%%%%%%%%%
 
 handle_cast(Msg, State) ->
-	io:format("> conn: msg: ~p~n", [Msg]),
+	error_logger:warning_msg("conn.server: unexpected msg: ~p~n", [Msg]),
     {noreply, State}.
+
+
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
@@ -179,9 +180,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 
-%% --------------------------------------------------------------------
-%%% MAIN state-machine
-%% --------------------------------------------------------------------
+%%% ------------------------------------------------------------------------- %%%
+%%% ------------------------------------------------------------------------- %%%
+%%% ------------------------------------------------------------------------- %%%
 
 
 
@@ -197,6 +198,13 @@ handle_cmethod(State, {Channel, _Size, 'channel.open.ok', _Payload}) ->
 handle_cmethod(State, {Channel, _Size, 'exchange.declare.ok', _Payload}) ->
 	ApiServer=State#state.aserver,
 	gen_server:cast(ApiServer, {exchange.declare.ok, Channel}),
+	State;
+
+%% Queue.delete.ok
+%%
+handle_cmethod(State, {Channel, _Size, Method='queue.delete.ok', _Payload}) ->
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, {Method, Channel}),
 	State;
 
 %% Queue.bind.ok
@@ -235,9 +243,11 @@ handle_cmethod(State, Msg) ->
 	State.
 
 
-%%% ------------------------------------------------------------------------- %%%
-%%% ------------------------------------------------------------------------- %%%
-%%% ------------------------------------------------------------------------- %%%
+
+
+%% --------------------------------------------------------------------
+%%% MAIN state-machine
+%% --------------------------------------------------------------------
 
 
 
@@ -284,6 +294,8 @@ handle_method(State, _Channel, _Size, 'connection.tune'=Method, Payload) when St
 handle_method(State, _Channel, _Size, 'connection.close'=Method, Payload) ->
 	Result=amqp_proto:decode_method(Method, Payload),
 	error_logger:info_msg("Connection.close: ~p", [Result]),
+	ApiServer=State#state.aserver,
+	gen_server:cast(ApiServer, {error, {connection, close, Result}}),
 	State#state{cstate=wait.start};
 	
 

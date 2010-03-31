@@ -103,6 +103,11 @@ handle_cast({_From, packet, Type, Channel, Payload}, State=#state{cstate=wait.pa
 	end,
 	{noreply, State2};
 
+handle_cast({_From, packet, _Type, _Channel, _Payload}, State=#state{cstate=wait.socket}) ->
+	Tserver=State#state.tserver,
+	gen_server:cast(Tserver, {error, {transport.writer.send, unexpected.pkt}}),
+	{noreply, State};
+
 handle_cast(Msg, State=#state{cstate=wait.socket}) ->
 	error_logger:warning_msg("writer.server: (in wait.socket) unexpected msg: ~p", [Msg]),
 	{noreply, State};

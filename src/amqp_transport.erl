@@ -117,7 +117,7 @@ handle_cast({_From=Client, open, [Address, Port], Opts}, State=#state{cstate=wai
 			Cserver=State#state.cserver,
 			gen_server:cast(Rserver, {self(), socket, Socket}),
 			gen_server:cast(Wserver, {self(), socket, Socket}),
-			gen_server:cast(Cserver, {ok, transport.open});
+			gen_server:cast(Cserver, {ok, {transport, open}});
 		{error, Reason} ->
 			State2=State,
 			Cserver=State#state.cserver,
@@ -131,7 +131,7 @@ handle_cast({From, open, _Host, _Port}, State) ->
 
 handle_cast({ok, 'transport.writer.send.protocol.start.header'}, State) ->
 	Cserver=State#state.cserver,
-	gen_server:cast(Cserver, {ok, transport.ready}),
+	gen_server:cast(Cserver, {ok, {transport, ready}}),
 	{noreply, State};
 
 
@@ -146,12 +146,7 @@ handle_cast({error, {_Error, _Reason}}, State=#state{socket=none}) ->
 %%
 handle_cast({error, {Error, Reason}}, State) ->
 	error_logger:warning_msg("transport.server: received error notification(~p): Reason: ~p", [Error, Reason]),
-	
-	Client=State#state.client,
-	Client ! {error, {Error, Reason}},
-	
-	do_close(State),
-	
+	do_close(State, Reason),
 	{noreply, State#state{socket=none, cstate=wait.open}};
 
 
@@ -194,9 +189,9 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-do_close(State) ->
+do_close(State, Reason) ->
 	ConnServer=State#state.cserver,
-	gen_server:cast(ConnServer, {error, transport.closed}),
+	gen_server:cast(ConnServer, {error, {transport.closed, Reason}}),
 	
 	Socket=State#state.socket,
 	gen_tcp:close(Socket).

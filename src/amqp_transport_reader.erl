@@ -95,7 +95,7 @@ handle_cast({From, do.wait.header}, State=#state{cstate=wait.header}) ->
 			State2=State,
 			gen_server:cast(self(), {From, do.wait.header});
 		{error, Reason} ->
-			io:format("> reader/header, error, reason: ~p~n", [Reason]),
+			%io:format("> reader/header, error, reason: ~p~n", [Reason]),
 			State2=State#state{cstate=wait.init},
 			Tserver=State#state.tserver,
 			gen_server:cast(Tserver, {error, {'transport.reader.wait.header', Reason}})
@@ -124,7 +124,7 @@ handle_cast({From, do.wait.payload, <<Type:8, Channel:16, Size:32>>}, State=#sta
 		
 			%% Errors should be few in between... setup Tserver just then 
 		{error, Reason} ->
-			io:format("> reader/payload, error, reason: ~p~n", [Reason]),
+			%io:format("> reader/payload, error, reason: ~p~n", [Reason]),
 			State2=State#state{cstate=wait.init},
 			Tserver=State#state.tserver,
 			gen_server:cast(Tserver, {error, {'transport.reader.wait.payload', Reason}})
