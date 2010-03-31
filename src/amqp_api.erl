@@ -44,6 +44,7 @@
 -export([ 'conn.open'/0, 'conn.open'/5 
 		, 'chan.open'/1
 		, 'exchange.declare'/7
+		, 'queue.declare'/7
 		, 'queue.bind'/5
 		, 'basic.consume'/7
 		]).
@@ -74,6 +75,9 @@
 	gen_server:cast(?SERVER, {self(), 'conn.open'}).
 													  
 'conn.open'(Username, Password, Address, Port, Vhost) ->
+	amqp_misc:check_params([Username, Password, Address, Port, Vhost], 
+						   [{string, username}, {string, password}, 
+							{string, address}, {int, port}, {string, vhost}]),
 	gen_server:cast(?SERVER, {self(), 'conn.open', Username, Password, Address, Port, Vhost}).
 
 %% --------------------------------------------------------------------
@@ -84,112 +88,46 @@
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-'chan.open'(Ref) when is_integer(Ref) ->
-	gen_server:cast(?SERVER, {self(), 'chan.open', Ref});
-
 'chan.open'(Ref) ->
-	{error, {invalid.parameter, Ref}}.
+	amqp_misc:check_params([Ref], [{int, channel.ref}]),
+	gen_server:cast(?SERVER, {self(), 'chan.open', Ref}).
 
 
 %'exchange.declare
 'exchange.declare'(Channel, Name, Type, Durable, AutoDelete, Internal, NoWait) ->
-	case is_list(Name) of
-		true -> ok;
-		_    -> erlang:error({error, {invalid.parameter, name, Name}})
-	end,
-	case Type of
-		direct -> ok;
-		fanout -> ok;
-		topic  -> ok;
-		_      -> erlang:error({error, {invalid.parameter, type, Type}})
-	end,
-	case Durable of
-		true  -> ok;
-		false -> ok;
-		_      -> erlang:error({error, {invalid.parameter, durable, Durable}})
-	end,
-	case AutoDelete of
-		true  -> ok;
-		false -> ok;
-		_      -> erlang:error({error, {invalid.parameter, auto.delete, AutoDelete}})
-	end,
-	case Internal of
-		true  -> ok;
-		false -> ok;
-		_      -> erlang:error({error, {invalid.parameter, internal, Internal}})
-	end,
-	case NoWait of
-		true  -> ok;
-		false -> ok;
-		_      -> erlang:error({error, {invalid.parameter, nowait, NoWait}})
-	end,	
+	amqp_misc:check_params([Channel, Name, Type, Durable, AutoDelete, Internal, NoWait], 
+						   [{int, channel}, {string, exchange.name}, {choice, [direct, fanout, topic]},
+							{bool, auto.delete}, {bool, internal}, {bool, no.wait}]),
 	EType=erlang:atom_to_list(Type),
 	gen_server:cast(?SERVER, {self(), 'exchange.declare', Channel, [Name, EType, Durable, AutoDelete, Internal, NoWait]}).
 
 
+%% Queue.declare
+%%
+'queue.declare'(Channel, QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait) ->
+	amqp_misc:check_params([Channel, QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait], 
+						   [{int, channel}, {string, queue.name}, 
+							{bool, passive}, {bool, durable}, {bool, exclusive}, {bool, auto.delete},
+							{bool, no.wait}]),
+	gen_server:cast(?SERVER, {self(), 'queue.bind', Channel, [QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait]}).
+
+
 %% Queue.bind
 %%
-'queue.bind'(Channel, Name, ExchangeName, RoutingKey, NoWait) ->
-	case is_integer(Channel) of
-		true  -> ok;
-		false -> erlang:error({error, {invalid.parameter, channel, Channel}})
-	end,
-	case is_list(Name) of
-		true  -> ok;
-		false -> erlang:error({error, {invalid.parameter, name, Name}})
-	end,
-	case is_list(ExchangeName) of
-		true  -> ok;
-		false -> erlang:error({error, {invalid.parameter, exchange.name, ExchangeName}})
-	end,
-	case is_list(RoutingKey) of
-		true  -> ok;
-		false -> erlang:error({error, {invalid.parameter, routing.key, RoutingKey}})
-	end,
-	case NoWait of
-		true  -> ok;
-		false -> ok;
-		_     -> erlang:error({error, {invalid.parameter, nowait, NoWait}})
-	end,
-	gen_server:cast(?SERVER, {self(), 'queue.bind', Channel, [Name, ExchangeName, RoutingKey, NoWait]}).
+'queue.bind'(Channel, QueueName, ExchangeName, RoutingKey, NoWait) ->
+	amqp_misc:check_params([Channel, QueueName, ExchangeName, RoutingKey, NoWait], 
+						   [{int, channel}, {string, queue.name}, {string, exchange.name},
+							{string, routing.key}, {bool, no.wait}]),
+	gen_server:cast(?SERVER, {self(), 'queue.bind', Channel, [QueueName, ExchangeName, RoutingKey, NoWait]}).
 		
 %% Basic.consume
 %%
 %%
-'basic.consume'(Channel, Queue, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait) ->
-	case is_integer(Channel) of
-		true  -> ok;
-		false -> erlang:error({error, {invalid.parameter, channel, Channel}})
-	end,
-	case is_list(Queue) of
-		true  -> ok;
-		false -> erlang:error({error, {invalid.parameter, queue, Queue}})
-	end,
-	case is_list(ConsumerTag) of
-		true  -> ok;
-		false -> erlang:error({error, {invalid.parameter, consumer.tag, ConsumerTag}})
-	end,
-	case NoLocal of
-		true  -> ok;
-		false -> ok;
-		_     -> erlang:error({error, {invalid.parameter, no.local, NoLocal}})
-	end,
-	case NoAck of
-		true  -> ok;
-		false -> ok;
-		_     -> erlang:error({error, {invalid.parameter, no.ack, NoAck}})
-	end,
-	case Exclusive of
-		true  -> ok;
-		false -> ok;
-		_     -> erlang:error({error, {invalid.parameter, exclusive, Exclusive}})
-	end,
-	case NoWait of
-		true  -> ok;
-		false -> ok;
-		_     -> erlang:error({error, {invalid.parameter, nowait, NoWait}})
-	end,	
-	gen_server:cast(?SERVER, {self(), 'basic.consume', Channel, [Queue, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait]}).
+'basic.consume'(Channel, QueueName, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait) ->
+	amqp_misc:check_params([Channel, QueueName, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait], 
+						   [{int, Channel}, {string, QueueName}, {string, ConsumerTag},
+							{bool, no.local}, {bool, no.ack}, {bool, exclusive}, {bool, no.wait}]),
+	gen_server:cast(?SERVER, {self(), 'basic.consume', Channel, [QueueName, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait]}).
 
 %% ====================================================================
 %% Management functions
@@ -264,6 +202,13 @@ handle_cast({_From, 'exchange.declare', Channel, Params}, State) ->
 	Wserver=State#state.wserver,
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
 	{noreply, State};
+
+handle_cast({_From, Method='queue.declare', Channel, Params}, State) ->
+	Payload=amqp_proto:encode_method(Method, Params),
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Channel, Payload}),	
+	{noreply, State};
+
 
 %% Queue.bind
 %%

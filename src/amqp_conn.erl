@@ -130,8 +130,6 @@ handle_cast({amqp.packet, ?TYPE_METHOD, Channel, Size, <<ClassId:16, MethodId:16
 	Method=amqp_proto:imap(ClassId, MethodId),
 	%error_logger:info_msg("conn.server: handling Client Method(~p) on Channel(~p)~n", [Method, Channel]),
 	NewState=handle_cmethod(State, {Channel, Size, Method, Rest}),
-	%CCMsgServer=State#state.ccserver,
-	%gen_server:cast(CCMsgServer, {pkt, method, Channel, Size, Method, Rest}),
 	{noreply, NewState};
 
 handle_cast({amqp.packet, ?TYPE_HEADER, Channel, Size, Payload}, State) ->
@@ -292,11 +290,6 @@ handle_method(State, _Channel, _Size, 'connection.open.ok', _Payload) ->
 handle_method(State, Channel, _Size, Method, _Payload) ->
 	error_logger:warning_msg("Connection.server: unexpected Method: ~p, Channel: ~p", [Method, Channel]),
 	State.
-
-	
-%% --------------------------------------------------------------------
-%%% Internal functions
-%% --------------------------------------------------------------------
 
 	
 

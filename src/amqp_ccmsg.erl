@@ -71,7 +71,8 @@ handle_cast(reset, State) ->
 	erlang:erase(),
 	{noreply, State};
 
-handle_cast({pkt, method, Channel, Size, 'basic.deliver', Rest}, State) ->
+handle_cast({pkt, method, Channel, _Size, 'basic.deliver', _Rest}, State) ->
+	error_logger:info_msg("cc.server: basic.deliver~n"),
 	put({Channel, state}, {start, basic.deliver}),
 	%% reset any previsouly received Header
 	put({Channel, header}, undefined),
@@ -102,11 +103,11 @@ handle_cast({pkt, method, _Channel, _Size, _, _Rest}, State) ->
 %%
 handle_cast({pkt, header, Channel, _Size, Header}, State) ->
 	put({Channel, header}, Header),
-	%io:format("cc.server: header: ~p~n", [Header]),
+	io:format("cc.server: header: ~p~n", [Header]),
 	{noreply, State};
 
 handle_cast({pkt, body, Channel, Size, Payload}, State) ->
-	%io:format("cc.server: body: ~p~n", [Payload]),
+	io:format("cc.server: body, size: ~p -- Payload:~p~n", [Size, Payload]),
 	Header=get({Channel, header}),
 	case Header of
 		undefined -> 
@@ -159,7 +160,7 @@ handle_body(State, Channel, Size, BodySize, Payload) ->
 	NewSize=CurrentSize+Size,
 	NewData= <<Data/binary, Payload:Size/binary>>,
 	NewBodyData={NewSize, NewData},
-	%io:format("handle_body: Size: ~p CurrentSize: ~p  NewSize:~p~n", [Size, CurrentSize, NewSize]),
+	io:format("handle_body: Size: ~p CurrentSize: ~p  NewSize:~p~n", [Size, CurrentSize, NewSize]),
 	case NewSize==BodySize of
 		false -> 
 				put({Channel, body}, NewBodyData);

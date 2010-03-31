@@ -527,6 +527,18 @@ encode_method(Method='exchange.declare', [Name, Type, Durable, AutoDelete, Inter
 	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, Name}, {shortstr, Type}, {octet, Bits}]),
 	<<MethodCode/binary, Params/binary, 0:32>>;
 
+
+%% queue.declare
+%%
+encode_method(Method='queue.declare', [QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait]) ->
+	MethodCode=amqp_proto:emap(Method),
+	Ticket=0,
+	Bits=amqp_proto:encode_bits([Passive, Durable, Exclusive, AutoDelete, NoWait]),
+	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, QueueName}, {octet, Bits}]),
+	<<MethodCode/binary, Params/binary, 0:32>>;
+
+
+
 %% arguments: void (0:32)
 %%
 encode_method(Method='queue.bind', [Name, ExchangeName, RoutingKey, NoWait]) ->
