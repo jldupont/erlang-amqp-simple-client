@@ -4,7 +4,7 @@
 %%%
 %%% States:
 %%%		wait.socket : waiting for socket parameters
-%%%     wait.packet : waiting for packet to frame and transmit
+%%%     wait.write  : waiting for packet/message to frame and transmit
 %%%
 %%%
 %%% Created : Mar 23, 2010
@@ -24,7 +24,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {cstate=wait.socket, socket=none, server=none, tserver=none}).
+-record(state, {cstate=wait.socket, socket=none, server=none, tserver=none, fmax=none}).
 
 %% ====================================================================
 %% External functions
@@ -81,11 +81,11 @@ handle_cast(close, State) ->
 %%  
 %% Upon Success/Failure, signal back to Transport.Server
 %%
-handle_cast({_From, socket, Socket}, State) ->
+handle_cast({_From, socket, Socket, FrameMax}, State) ->
 	Tserver=State#state.tserver,
 	case gen_tcp:send(Socket, ?PROTOCOL_HEADER) of
 		ok ->
-			State2=State#state{cstate=wait.packet, socket=Socket},
+			State2=State#state{cstate=wait.write, socket=Socket, fmax=FrameMax},
 			gen_server:cast(Tserver, {ok, 'transport.writer.send.protocol.start.header'});
 		{error, Reason} ->
 			%io:format("!! Writer/socket: error, reason: ~p~n", [Reason]),
@@ -95,7 +95,7 @@ handle_cast({_From, socket, Socket}, State) ->
 	end,
 	{noreply, State2};
 
-handle_cast({_From, packet, Type, Channel, Payload}, State=#state{cstate=wait.packet}) ->
+handle_cast({_From, packet, Type, Channel, Payload}, State=#state{cstate=wait.write}) ->
 	Socket=State#state.socket,
 	Len=erlang:size(Payload),
 	Frame= <<Type:8, Channel:16, Len:32, Payload/binary, 16#ce:8>>,
@@ -109,6 +109,11 @@ handle_cast({_From, packet, Type, Channel, Payload}, State=#state{cstate=wait.pa
 			gen_server:cast(Tserver, {error, {transport.writer.send, Reason}})
 	end,
 	{noreply, State2};
+
+handle_cast({_From, msg, Channel, Method, MethodFrame, Message}, State=#state{cstate=wait.write}) ->
+	NewState=handle_msg({Channel, Method, MethodFrame, Message}, State),
+	{noreply, NewState};
+
 
 handle_cast({_From, packet, _Type, _Channel, _Payload}, State=#state{cstate=wait.socket}) ->
 	Tserver=State#state.tserver,
@@ -148,4 +153,27 @@ terminate(_Reason, _State) ->
 %% --------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+%% --------------------------------------------------------------------------------------- %%
+%% --------------------------------------------------------------------------------------- %%
+%% --------------------------------------------------------------------------------------- %%
+
+
+%% Message sending
+%%
+%%  3step process:
+%%  a) write Method frame
+%%	b) write Header frame
+%%  c) write Body frame
+%%
+handle_msg({Channel, Method, MethodFrameData, Message}, State) ->
+
+	%% (a)
+	Len=erlang:size(MethodFrameData),
+	MethodFrame= <<?TYPE_METHOD:8, Channel:16, Len:32, MethodFrameData/binary, 16#ce:8>>,
+
+	
+
+	ok.
 

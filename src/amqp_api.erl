@@ -55,6 +55,7 @@
 		, 'queue.delete'/5
 		, 'queue.bind'/5
 		, 'basic.consume'/7
+		, 'basic.publish'/6
 		]).
 
 %% management functions
@@ -137,6 +138,17 @@
 							{bool, no.local}, {bool, no.ack}, {bool, exclusive}, {bool, no.wait}]),
 	gen_server:cast(?SERVER, {self(), 'basic.consume', Channel, [QueueName, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait]}).
 
+
+%% Basic.Publish
+%%
+%%
+'basic.publish'(Channel, ExchangeName, Message, RoutingKey, Mandatory, Immediate) ->
+	amqp_misc:check_params([Channel, ExchangeName, Message, RoutingKey, Mandatory, Immediate], 
+						   [{int, Channel}, {string, ExchangeName}, {string, Message}, {string, RoutingKey},
+							{bool, mandatory}, {bool, immediate}]),
+	gen_server:cast(?SERVER, {self(), 'basic.publish', Channel, {[ExchangeName, RoutingKey, Mandatory, Immediate], Message}}).
+
+
 %% ====================================================================
 %% Management functions
 %% ====================================================================
@@ -190,8 +202,10 @@ handle_cast({From, 'conn.open', Username, Password, Address, Port, Vhost}, State
 	ConnServer=State#state.cserver,
 	gen_server:cast(ConnServer, {conn.params, Username, Password, Vhost}),
 	
+	{ok, FrameMax}=application:get_env(default.frame.max),
+	
 	TransportServer=State#state.tserver,
-	gen_server:cast(TransportServer, {From, open, [Address, Port], []}),
+	gen_server:cast(TransportServer, {From, open, [Address, Port, FrameMax], []}),
 	
 	%% Keep client process id
 	{noreply, State#state{client=self(),
@@ -206,6 +220,16 @@ handle_cast({_From, 'chan.open', Ref, []}, State) ->
 	Wserver=State#state.wserver,
 	gen_server:cast(Wserver, {self(), packet, ?TYPE_METHOD, Ref, MethodFrame}),
 	{noreply, State};
+
+
+%% basic.publish
+%%
+handle_cast({_From, Method='basic.publish', Channel, {Params, Message}}, State) ->
+	MethodFrame=amqp_proto:encode_method(Method, Params),
+	Wserver=State#state.wserver,
+	gen_server:cast(Wserver, {self(), msg, Channel, Method, MethodFrame, Message}),
+	{noreply, State};
+
 
 %% All methods
 %%

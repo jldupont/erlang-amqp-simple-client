@@ -7,6 +7,24 @@
 
 -include("amqp.hrl").
 
+%% Basic Properties
+%%
+-define(BASIC_PROPERTIES, [ {16#8000, shortstr,  content.type}
+						  , {16#4000, shortstr,  content.encoding}
+						  , {16#2000, table,     headers}
+						  , {16#1000, octet,     delivery.mode}
+						  , {16#0800, octet,     priority}
+						  , {16#0400, shortstr,  correlation.id}
+						  , {16#0200, shortstr,  reply.to}
+						  , {16#0100, shortstr,  expiration}
+						  , {16#0080, shortstr,  message.id}
+						  , {16#0040, timestamp, timestamp}
+						  , {16#0020, shortstr,  type}
+						  , {16#0010, shortstr,  user.id}
+						  , {16#0008, shortstr,  app.id}
+						  , {16#0004, shortstr,  cluster.id}
+						   ]).
+
 %%
 %% Definitions
 %%
@@ -278,7 +296,8 @@ decode_method(_, _) ->
 
 
 
-decode_header(<<ClassId:16, Weight:16, BodySize:64, Properties/binary>>) ->
+decode_header(<<ClassId:16, Weight:16, BodySize:64, PropertiesBin/binary>>) ->
+	Properties=decode_properties(PropertiesBin),
 	{ClassId, Weight, BodySize, Properties};
 
 decode_header(_) ->
@@ -383,6 +402,36 @@ decode_prim(_, Data) ->
 
 decode_bit(Byte) when Byte =< 255 ->
 	[{bit, Byte band 16#01}, Byte bsr 1].
+
+
+
+%% Decodes the properties for the "Basic" class
+%%
+decode_properties(<<Flags:16/binary, Properties/binary>>) ->
+	decode_properties(Flags, Properties, ?BASIC_PROPERTIES,  []).
+
+decode_properties(_, _, [], Acc) ->
+	Acc;
+
+decode_properties(Flags, Properties, [{BitMask, Type, Name}|Rest], Acc) ->
+	Pset=Flags band BitMask==BitMask,
+	Result = case Pset of
+		true ->
+			case Type of
+				table ->
+					table_decode(Properties);
+				_ ->
+					decode_prim(Type, Properties)
+			end;
+		_    -> void
+	end,
+	case Result of
+		void -> 
+			decode_properties(Flags, Properties, Rest, Acc);
+		{Value, RestProperties}    ->
+			decode_properties(Flags, RestProperties, Rest, Acc++[{Name, Value}])
+	end.
+	
 
 
 %%
@@ -583,6 +632,17 @@ encode_method(Method='basic.consume', [Queue, ConsumerTag, NoLocal, NoAck, Exclu
 											{shortstr, ConsumerTag}, {octet, Bits}]),
 	<<MethodCode/binary, Params/binary>>;
 	
+
+%% Basic.Publish
+%%
+encode_method(Method='basic.publish', [ExchangeName, RoutingKey, Mandatory, Immediate]) ->
+	MethodCode=amqp_proto:emap(Method),
+	Ticket=0,
+	Bits=amqp_proto:encode_bits([Mandatory, Immediate]),
+	Params=amqp_proto:encode_method_params([{short, Ticket}, {shortstr, ExchangeName}, 
+											{shortstr, RoutingKey}, {octet, Bits}]),
+	<<MethodCode/binary, Params/binary>>;
+
 
 %% connection.start.ok
 %%
