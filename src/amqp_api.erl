@@ -50,11 +50,11 @@
 %% --------------------------------------------------------------------
 -export([ 'conn.open'/0, 'conn.open'/5 
 		, 'chan.open'/1
-		, 'exchange.declare'/7
-		, 'queue.declare'/7
+		, 'exchange.declare'/7, 'exchange.declare'/3
+		, 'queue.declare'/7,    'queue.declare'/2
 		, 'queue.delete'/5
-		, 'queue.bind'/5
-		, 'basic.consume'/7
+		, 'queue.bind'/5,       'queue.bind'/4
+		, 'basic.consume'/7,    'basic.consume'/4
 		, 'basic.publish'/6
 		]).
 
@@ -88,13 +88,24 @@
 
 %% Channel.open
 %%
-'chan.open'(Ref) ->
-	amqp_misc:check_params([Ref], [{int, channel.ref}]),
-	gen_server:cast(?SERVER, {self(), 'chan.open', Ref, []}).
+'chan.open'(Channel) ->
+	amqp_misc:check_params([Channel], [{int, channel.ref}]),
+	Registered=erlang:registered(),
+	ChannelServer=erlang:list_to_atom("amqp.channel."++erlang:integer_to_list(Channel)),
+	Result=lists:member(ChannelServer, Registered),
+	case Result of
+		true -> ok;
+		_    -> erlang:error({error, {channel, "receiving server unavailable", ChannelServer}})
+	end,
+	gen_server:cast(?SERVER, {self(), 'chan.open', Channel, []}).
 
 
 %% 'Exchange.declare
 %%
+'exchange.declare'(Channel, Name, Type) ->
+	'exchange.declare'(Channel, Name, Type, false, true, false, true).
+
+
 'exchange.declare'(Channel, Name, Type, Durable, AutoDelete, Internal, NoWait) ->
 	amqp_misc:check_params([Channel, Name, Type, Durable, AutoDelete, Internal, NoWait], 
 						   [{int, channel}, {string, exchange.name}, {choice, [direct, fanout, topic]},
@@ -105,6 +116,9 @@
 
 %% Queue.declare
 %%
+'queue.declare'(Channel, QueueName) ->
+	'queue.declare'(Channel, QueueName, false, false, false, true, true).
+
 'queue.declare'(Channel, QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait) ->
 	amqp_misc:check_params([Channel, QueueName, Passive, Durable, Exclusive, AutoDelete, NoWait], 
 						   [{int, channel}, {string, queue.name}, 
@@ -123,6 +137,9 @@
 
 %% Queue.bind
 %%
+'queue.bind'(Channel, QueueName, ExchangeName, RoutingKey) ->
+	'queue.bind'(Channel, QueueName, ExchangeName, RoutingKey, true).
+
 'queue.bind'(Channel, QueueName, ExchangeName, RoutingKey, NoWait) ->
 	amqp_misc:check_params([Channel, QueueName, ExchangeName, RoutingKey, NoWait], 
 						   [{int, channel}, {string, queue.name}, {string, exchange.name},
@@ -132,6 +149,9 @@
 %% Basic.consume
 %%
 %%
+'basic.consume'(Channel, QueueName, ConsumerTag, NoLocal) ->
+	'basic.consume'(Channel, QueueName, ConsumerTag, NoLocal, true, false, true).
+
 'basic.consume'(Channel, QueueName, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait) ->
 	amqp_misc:check_params([Channel, QueueName, ConsumerTag, NoLocal, NoAck, Exclusive, NoWait], 
 						   [{int, Channel}, {string, QueueName}, {string, ConsumerTag},

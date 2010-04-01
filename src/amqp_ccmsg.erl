@@ -151,7 +151,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-handle_body(State, Channel, Size, BodySize, Payload) ->
+handle_body(_State, Channel, Size, BodySize, Payload) ->
 	BodyData=get({Channel, body}),
 	{CurrentSize, Data}=case BodyData of
 		undefined -> {0, <<>>};
@@ -159,7 +159,7 @@ handle_body(State, Channel, Size, BodySize, Payload) ->
 	end,
 	NewSize=CurrentSize+Size,
 	NewData= <<Data/binary, Payload:Size/binary>>,
-	NewBodyData={NewSize, NewData},
+	Msg=NewBodyData={NewSize, NewData},
 	%io:format("handle_body: Size: ~p CurrentSize: ~p  NewSize:~p~n", [Size, CurrentSize, NewSize]),
 	case NewSize==BodySize of
 		false -> 
@@ -167,12 +167,11 @@ handle_body(State, Channel, Size, BodySize, Payload) ->
 		true  -> 
 			put({Channel, header}, undefined),
 			put({Channel, body},   undefined),
-			io:format("cc.server: packet: ~p~n", [NewBodyData])
+			%io:format("cc.server: packet: ~p~n", [NewBodyData])
+			forward_to_channel(Channel, Msg)
 	end.
 
 forward_to_channel(Channel, Msg) ->
-	ChannelServer=erlang:list_to_atom("amqp.channel."++[Channel]),
-	catch gen_server:cast(ChannelServer, Msg) ->
-		_ -> ok
-	end,
-	ok.
+	ChannelServer=erlang:list_to_atom("amqp.channel."++erlang:integer_to_list(Channel)),
+	gen_server:cast(ChannelServer, Msg).
+
