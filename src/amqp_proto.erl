@@ -407,7 +407,7 @@ decode_bit(Byte) when Byte =< 255 ->
 
 %% Decodes the properties for the "Basic" class
 %%
-decode_properties(<<Flags:16/binary, Properties/binary>>) ->
+decode_properties(<<Flags:16, Properties/binary>>) ->
 	decode_properties(Flags, Properties, ?BASIC_PROPERTIES,  []).
 
 decode_properties(_, _, [], Acc) ->
@@ -428,7 +428,7 @@ decode_properties(Flags, Properties, [{BitMask, Type, Name}|Rest], Acc) ->
 	case Result of
 		void -> 
 			decode_properties(Flags, Properties, Rest, Acc);
-		{Value, RestProperties}    ->
+		[Value, RestProperties]    ->
 			decode_properties(Flags, RestProperties, Rest, Acc++[{Name, Value}])
 	end.
 	

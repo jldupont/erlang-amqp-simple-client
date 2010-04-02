@@ -49,7 +49,7 @@
 %% API -- External exports
 %% --------------------------------------------------------------------
 -export([ 'conn.open'/0, 'conn.open'/5 
-		, 'chan.open'/1
+		, 'chan.open'/1, 'chan.open'/2
 		, 'exchange.declare'/7, 'exchange.declare'/3
 		, 'queue.declare'/7,    'queue.declare'/2
 		, 'queue.delete'/5
@@ -88,6 +88,10 @@
 
 %% Channel.open
 %%
+'chan.open'(Channel, nocheck) ->
+	amqp_misc:check_params([Channel], [{int, channel.ref}]),
+	gen_server:cast(?SERVER, {self(), 'chan.open', Channel, []}).
+
 'chan.open'(Channel) ->
 	amqp_misc:check_params([Channel], [{int, channel.ref}]),
 	Registered=erlang:registered(),
